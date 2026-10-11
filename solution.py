@@ -5,10 +5,13 @@
 # TODO (KHU 4 - chu A): Cai dat tim kiem va quan ly ngan sach thoi gian.
 # TODO (KHU 5 - chu A): Cai dat solve(initial_state, timebound=120).
 
+
 from collections import deque
 import time
+from sokoban import sokoban_goal_state
 TIME_FRACTION = 0.85
 CHECK_EVERY = 500
+MAX_STATES = 2000000 
 
 # ==== Khu 1 === Xay board, state noi bo, successors_fast va rebuild.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))     # up, right, down, left
@@ -68,7 +71,7 @@ def solve(initial_state, timebound=120):
         return False
 
     deadline = time.monotonic() + timebound * TIME_FRACTION
-    if initial_state.sokoban_goal_state():
+    if sokoban_goal_state(initial_state):
         return initial_state
     queue = deque([initial_state])
     visited = {initial_state.hashable_state()}
@@ -78,6 +81,10 @@ def solve(initial_state, timebound=120):
 
         # Kiểm tra đồng hồ sau mỗi CHECK_EVERY node được mở ra
         if (expanded_nodes % CHECK_EVERY) == 0 and time.monotonic() >= deadline:
+            return False
+
+        #Dừng lại khi tràn bộ nhớ
+        if len(visited) > MAX_STATES:
             return False
         
         expanded_nodes += 1
@@ -89,7 +96,7 @@ def solve(initial_state, timebound=120):
                 continue
             
             #Kiểm tra đích ngay lúc sinh node
-            if child.sokoban_goal_state():
+            if sokoban_goal_state(child):
                 return child
             visited.add(key)
             queue.append(child)
