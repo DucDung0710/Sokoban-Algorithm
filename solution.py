@@ -22,11 +22,14 @@ DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))     # up, right, down, left
 NAMES = ("up", "right", "down", "left")
 
 class Board:
+    """Bảng tiền xử lý kích thước, láng giềng, đích và action."""
+
     __slots__=('W', 'H', 'N', 'nbr', 'goals', 'goal_mask', 'act',
                 'dead', 'pd_min', 'pdc', 'h_cache')
 
 
 def build_board(state):
+    """Tiền xử lý ô kề và đích; O(WH+T+G log G+R)."""
     W, H = state.width, state.height
     #Đánh số ô thành số nguyên: p = y * W + x, với (x, y) là tọa độ ô
     walls = {y * W + x for (x, y) in state.obstacles}
@@ -64,16 +67,9 @@ def build_board(state):
 
 
 def solve(initial_state, timebound=120):
-    """
-    BFS cơ sở cho Sokoban.
+    """Tìm đường ngắn nhất bằng BFS; O(V·R(R+B)) thời gian, O(V(R+B)) bộ nhớ.
 
-    Args:
-        initial_state: Trạng thái Sokoban ban đầu.
-        timebound: Giới hạn thời gian chạy, tính bằng giây.
-
-    Returns:
-        Trạng thái đích của framework nếu tìm được,
-        hoặc False nếu hết thời gian/không có lời giải.
+    Dừng khi hết thời gian hoặc chạm giới hạn state; V là số state đã thăm.
     """
 
     #Trả về False ngay nếu hết thời gian mà chưa tìm đc lời giải

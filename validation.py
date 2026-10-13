@@ -1,15 +1,16 @@
-# TODO: Chep file validation.py tu framework giang vien cung cap; dung de xac nhan chuoi loi giai.
+# TODO:
 """Independent path validation for public and instructor tests."""
 from sokoban import SokobanState, sokoban_goal_state
 
 
 def signature(state):
+    """Trả cấu hình bàn và quân cờ để so sánh hai state; O(1) tạo tuple."""
     return (state.width, state.height, state.robots, state.boxes,
             state.storage, state.obstacles)
 
 
 def validate_solution(initial, final):
-    """Return (valid, message); replay the parent chain, not just the goal/cost."""
+    """Kiểm tra parent-chain, nước đi và đích; O(L·R(R+B)) thời gian."""
     if not isinstance(final, SokobanState):
         return False, "Expected a SokobanState solution"
     chain, seen = [], set()

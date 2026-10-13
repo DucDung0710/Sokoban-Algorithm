@@ -15,17 +15,10 @@
 from state import StateSpace
 
 class SokobanState(StateSpace):
+    """State Sokoban gồm robot, hộp, ô đích và tường."""
 
     def __init__(self, action, gval, parent, width, height, robots, boxes, storage, obstacles):
-        '''
-        Creates a new Sokoban state.
-        @param width: The room's X dimension (excluding walls).
-        @param height: The room's Y dimension (excluding walls).
-        @param robots: A tuple of all the robots' locations. Each robot is denoted by its index in the list.
-        @param boxes: A frozenset of all the boxes.
-        @param storage: A frozenset of all the storage points.
-        @param obstacles: A frozenset of all the impassable obstacles.
-        '''
+        """Khởi tạo state với vị trí và bản đồ; O(1), không sao chép dữ liệu."""
         StateSpace.__init__(self, action, gval, parent)
         self.width = width
         self.height = height
@@ -35,9 +28,7 @@ class SokobanState(StateSpace):
         self.obstacles = obstacles    
 
     def successors(self):
-        '''
-        Generates all the actions that can be performed from this state, and the states those actions will create.        
-        '''
+        """Sinh các bước đi/đẩy hợp lệ; O(R(R+B)) thời gian, O(S(R+B)) bộ nhớ."""
         successors = []
         transition_cost = 1
 
@@ -85,11 +76,11 @@ class SokobanState(StateSpace):
         return successors
 
     def hashable_state(self):
-        '''Return a data item that can be used as a dictionary key to UNIQUELY represent a state.'''
+        """Trả khóa cấu hình từ vị trí robot và hộp; tạo tuple O(1)."""
         return (self.robots, self.boxes)
 
     def state_string(self):
-        '''Returns a string representation fo a state that can be printed to stdout.'''        
+        """Dựng bản đồ dạng text; O(WH+R+B+G+T), với W,H là kích thước bàn."""
         map = []
         for y in range(0, self.height):
             row = []
@@ -127,17 +118,13 @@ class SokobanState(StateSpace):
         return s        
 
     def print_state(self):
-        '''
-        Prints the string representation of the state. ASCII art FTW!
-        '''        
+        """In action gần nhất và bản đồ text của state."""
         print("ACTION was " + self.action)      
         print(self.state_string())
 
 
 def sokoban_goal_state(state):
-  '''Returns True if we have reached a goal state'''
-  '''INPUT: a sokoban state'''
-  '''OUTPUT: True (if goal) or False (if not)'''  
+  """Kiểm tra mọi hộp đã ở trên ô đích; O(B), với B là số hộp."""
   for box in state.boxes:
     if box not in state.storage:
       return False
@@ -274,40 +261,27 @@ PROBLEMS = (
 Sokoban Directions: encodes directions of movement that are possible for each robot.
 '''
 class Direction():
-    '''
-    A direction of movement.
-    '''
+    """Hướng di chuyển được xác định bởi tên và độ lệch tọa độ."""
     
     def __init__(self, name, delta):
-        '''
-        Creates a new direction.
-        @param name: The direction's name.
-        @param delta: The coordinate modification needed for moving in the specified direction.
-        '''
+        """Lưu tên hướng và độ lệch tọa độ; O(1)."""
         self.name = name
         self.delta = delta
     
     def __hash__(self):
-        '''
-        The hash method must be implemented for actions to be inserted into sets 
-        and dictionaries.
-        @return: The hash value of the action.
-        '''
+        """Băm tên hướng để dùng làm khóa; O(1) kỳ vọng."""
         return hash(self.name)
     
     def __str__(self):
-        '''
-        @return: The string representation of this object when *str* is called.
-        '''
+        """Trả tên hướng để hiển thị; O(1)."""
         return str(self.name)
     
     def __repr__(self):
+        """Dùng cùng biểu diễn với str()."""
         return self.__str__()
     
     def move(self, location):
-        '''
-        @return: Moving from the given location in this direction will result in the returned location.
-        '''
+        """Cộng độ lệch hướng vào tọa độ; O(1)."""
         return (location[0] + self.delta[0], location[1] + self.delta[1])
 
 

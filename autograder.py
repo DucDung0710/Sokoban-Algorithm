@@ -9,6 +9,7 @@ import sys
 
 
 def main():
+    """Chạy từng public test trong subprocess, ghi kết quả và trả mã thoát."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test", help="One PublicTests method, e.g. test_one_box")
     parser.add_argument("--json", type=Path, help="Optional JSON results file")
