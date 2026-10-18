@@ -129,6 +129,80 @@ def precompute_push_dist(board):
     return board.pdc, board.pd_min, board.dead
 
 
+def start_key(state):
+    """Chuyển SokobanState sang state nội bộ (robots, boxes); O(R + B)."""
+    W = state.width
+    robots = tuple(y * W + x for (x, y) in state.robots)
+    boxes = 0
+    for (x, y) in state.boxes:
+        boxes |= 1 << (y * W + x)
+    return (robots, boxes)
+ 
+ 
+def is_goal(b, s):
+    """True khi không có thùng nào nằm ngoài ô đích; O(1).
+ 
+    boxes & ~goal_mask giữ lại các thùng không ở đích: bằng 0 nghĩa là thắng.
+    Số ô đích có thể nhiều hơn số thùng nên không so sánh bằng.
+    """
+    return (s[1] & ~b.goal_mask) == 0
+ 
+ 
+def cells(mask):
+    """Duyệt chỉ số các bit bằng 1 của mask, từ thấp lên cao; O(số bit)."""
+    while mask:
+        low = mask & -mask              # bit 1 thấp nhất
+        yield low.bit_length() - 1      # chỉ số của bit đó
+        mask ^= low                     # bỏ bit đó
+ 
+ 
+def successors_fast(b, s):
+    """Sinh các nước đi từ state nội bộ s, không tạo SokobanState.
+ 
+    Trả list (action, s2, pushed): action là tên đúng như framework (vd "0 up"),
+    s2 là state nội bộ mới, pushed là ô thùng vừa được đẩy tới (hoặc None).
+    Tập (action, s2) phải khớp tuyệt đối với successors() của framework.
+    """
+    robots, boxes = s
+    nbr = b.nbr
+    act = b.act
+    out = []
+    for i, r in enumerate(robots):
+        row = nbr[r]
+        for d in range(4):
+            t = row[d]                          # ô robot sắp bước tới
+            if t < 0 or t in robots:            # tường, ngoài bàn, hoặc robot khác
+                continue
+            if (boxes >> t) & 1:                # phía trước có thùng: thử đẩy
+                u = nbr[t][d]                   # ô phía sau thùng
+                if u < 0 or (boxes >> u) & 1 or u in robots:
+                    continue                    # không đẩy được
+                nb = boxes ^ (1 << t) ^ (1 << u)    # thùng rời t, đến u (hai phép XOR)
+                pushed = u
+            else:                               # đi bộ
+                nb = boxes
+                pushed = None
+            out.append((act[i][d], (robots[:i] + (t,) + robots[i + 1:], nb), pushed))
+    return out
+ 
+ 
+def rebuild(initial_state, actions):
+    """Dựng lại chuỗi SokobanState thật từ danh sách action, bằng successors() của framework.
+ 
+    Mỗi state con do framework tạo nên có đúng parent, action, gval và validation.py
+    chấp nhận. initial_state chỉ được đọc, không bị sửa. Chi phí O(L * 4k).
+    """
+    cur = initial_state
+    for a in actions:
+        for c in cur.successors():
+            if c.action == a:
+                cur = c
+                break
+        else:
+            raise RuntimeError('action khong hop le: ' + a)
+    return cur
+
+
 def h_zero(state):
     """Heuristic 0 của UCS/A*; O(1)."""
     return 0
