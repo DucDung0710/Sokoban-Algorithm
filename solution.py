@@ -19,8 +19,10 @@ CHECK_EVERY = 500
 #Số state tối đa được lưu trong visited, tránh tràn bộ nhớ
 MAX_STATES = 2000000 
 INF = float("inf")
-HEURISTIC = "h1"
+HEURISTIC = "h2"
 USE_GC_DISABLE = True
+#Dãy trọng số cho anytime: w lớn tìm lời giải nhanh, w = 1 chứng minh tối ưu
+WEIGHTS = (5.0, 3.0, 2.0, 1.5, 1.0)
 
 # ==== Khu 1 === Xay board, state noi bo, successors_fast va rebuild.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))     # up, right, down, left
