@@ -457,6 +457,52 @@ def bfs_v0(initial_state, deadline, max_states=MAX_STATES):
     return None
 
 
+def anytime_search(initial_state, deadline, heuristic, deadlock,
+                   weights=WEIGHTS, max_states=MAX_STATES):
+    """Chạy weighted A* với w giảm dần, giữ lời giải tốt nhất; O(k·E log E).
+
+    Mỗi pha dùng chi phí tốt nhất hiện có làm bound. Dừng sớm khi:
+      - một pha chạy cạn heap (reason "exhausted"): không còn lời giải ngắn hơn,
+        lời giải đang giữ (nếu có) là tối ưu;
+      - pha w = 1 tìm được đích: đó là lời giải tối ưu;
+      - hết giờ hoặc chạm trần bộ nhớ.
+    Trả về (state đích tốt nhất hoặc None, danh sách thống kê từng pha, đã chứng
+    minh tối ưu hay chưa).
+    """
+    best = None
+    bound = INF
+    phases = []
+    proved = False
+    for weight in weights:
+        if time.monotonic() >= deadline:
+            break
+        try:
+            goal, stats = astar(initial_state, deadline, heuristic, deadlock,
+                                max_states=max_states, weight=weight, bound=bound)
+        except MemoryError:
+            # Hết RAM giữa chừng: giữ lời giải của các pha trước.
+            break
+        stats["weight"] = weight
+        stats["cost"] = goal.gval if goal is not None else None
+        phases.append(stats)
+        if goal is not None:
+            best = goal
+            bound = goal.gval
+            if weight <= 1.0:
+                proved = True
+                break
+        elif stats["reason"] == "exhausted":
+            # Không còn lời giải ngắn hơn bound: best (nếu có) là tối ưu,
+            # không có best nghĩa là map không có lời giải.
+            proved = True
+            break
+        elif stats["reason"] in ("timeout", "memory_cap"):
+            break
+        elif stats["reason"] in ("deadlock_at_start", "h_inf_at_start"):
+            proved = True
+            break
+    return best, phases, proved
+
 def solve(initial_state, timebound=120):
     """Giải bằng A*, h1 và deadlock ô tĩnh; O(E log E) thời gian, O(E) bộ nhớ."""
     #Trả về False ngay nếu hết thời gian mà chưa tìm đc lời giải
