@@ -1,7 +1,11 @@
 from collections import deque
+import time
 import unittest
 
-from solution import INF, build_board, h1
+from solution import (
+    INF, _minimum_assignment_cost, astar, build_board, h1, h2, h3, h_zero,
+    has_frozen_box_deadlock, is_dead, is_dead_static,
+)
 from sokoban import SokobanState, sokoban_goal_state
 
 
@@ -31,6 +35,38 @@ def shortest_solution_steps(initial):
 
 
 class PushDistanceTests(unittest.TestCase):
+    def test_assignment_uses_distinct_goals(self):
+        """Ghép tối ưu không cho hai hộp dùng chung một đích."""
+        self.assertEqual(_minimum_assignment_cost(((1, 5), (1, 100))), 6)
+        self.assertEqual(_minimum_assignment_cost(((INF, INF),)), INF)
+
+    def test_h1_h2_h3_are_admissible_for_two_boxes(self):
+        """So ba heuristic với BFS chính xác trên các cấu hình hai hộp nhỏ."""
+        walls = frozenset((x, y) for x in range(5) for y in (0, 2))
+        goals = frozenset(((3, 1), (4, 1)))
+        solvable_states = 0
+
+        for robot_x in range(5):
+            for first_box_x in range(5):
+                for second_box_x in range(first_box_x + 1, 5):
+                    if robot_x in (first_box_x, second_box_x):
+                        continue
+                    state = SokobanState(
+                        "START", 0, None, 5, 3, ((robot_x, 1),),
+                        frozenset(((first_box_x, 1), (second_box_x, 1))),
+                        goals, walls,
+                    )
+                    board = build_board(state)
+                    exact = shortest_solution_steps(state)
+                    values = (h1(state, board), h2(state, board), h3(state, board))
+                    if exact is None:
+                        continue
+                    solvable_states += 1
+                    for value in values:
+                        self.assertLessEqual(value, exact)
+
+        self.assertGreater(solvable_states, 0)
+
     def test_reverse_push_requires_robot_support_square(self):
         """Ô sau thùng phải sàn; góc không thể đẩy ra được đánh dấu dead."""
         state = corridor_state((0, 1), (1, 1))
@@ -54,12 +90,17 @@ class PushDistanceTests(unittest.TestCase):
                 state = corridor_state(robot, box)
                 board = build_board(state)
                 value = h1(state, board)
+                assignment_value = h2(state, board)
+                combined_value = h3(state, board)
                 exact = shortest_solution_steps(state)
 
                 if value == INF:
                     self.assertIsNone(exact, "Dead square must be unsolvable")
                 elif exact is not None:
                     self.assertLessEqual(value, exact, "h1 must not exceed h*")
+                    self.assertGreaterEqual(assignment_value, value)
+                    self.assertLessEqual(assignment_value, exact)
+                    self.assertLessEqual(combined_value, exact)
                     checked_solvable += 1
 
                 for child in state.successors():
@@ -82,6 +123,51 @@ class PushDistanceTests(unittest.TestCase):
         self.assertIsInstance(goal, SokobanState)
         self.assertTrue(sokoban_goal_state(goal))
         self.assertEqual(goal.gval, 3)
+
+
+class StaticDeadlockTests(unittest.TestCase):
+    def test_static_dead_square_is_detected_and_pruned(self):
+        """Ô góc không thể tới đích được nhận diện và A* loại bỏ."""
+        initial = corridor_state((2, 1), (1, 1))
+        board = build_board(initial)
+        dead_state = corridor_state((1, 1), (0, 1))
+
+        self.assertTrue(is_dead_static(dead_state, board))
+        self.assertFalse(is_dead_static(initial, board))
+
+        goal, stats = astar(
+            initial,
+            time.monotonic() + 5,
+            h_zero,
+            lambda state: is_dead_static(state, board),
+        )
+        self.assertIsNone(goal)
+        self.assertGreater(stats["pruned_dead"], 0)
+
+    def test_box_frozen_by_walls_is_detected(self):
+        """Hộp bị tường khóa cả hai trục bị phát hiện, trừ khi nằm trên đích."""
+        walls = frozenset(((1, 2), (3, 2), (2, 1), (2, 3)))
+        initial = SokobanState(
+            "START", 0, None, 5, 5, ((3, 2),),
+            frozenset(((2, 2),)), frozenset(((4, 4),)), walls,
+        )
+        board = build_board(initial)
+
+        self.assertTrue(has_frozen_box_deadlock(initial, board))
+        self.assertTrue(is_dead(initial, board))
+        goal, stats = astar(
+            initial, time.monotonic() + 5, h_zero,
+            lambda state: is_dead(state, board),
+        )
+        self.assertIsNone(goal)
+        self.assertEqual(stats["reason"], "deadlock_at_start")
+
+        box_on_goal = SokobanState(
+            "START", 0, None, 5, 5, ((3, 2),),
+            frozenset(((2, 2),)), frozenset(((2, 2),)), walls,
+        )
+        self.assertFalse(
+            has_frozen_box_deadlock(box_on_goal, build_board(box_on_goal)))
 
 
 if __name__ == "__main__":

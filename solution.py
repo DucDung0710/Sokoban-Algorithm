@@ -1,7 +1,6 @@
 # TODO (KHU 0 - chu A): Khai bao import, hang so va co bat/tat.
 # TODO (KHU 1 - chu B): Xay board, state noi bo, successors_fast va rebuild.
-# TODO (KHU 2 - chu C): Cai dat heuristic admissible.
-# TODO (KHU 3 - chu D): Cai dat phat hien deadlock sound.
+# PHAN C (vai tro C): Heuristic admissible va phat hien deadlock tinh.
 # TODO (KHU 4 - chu A): Cai dat tim kiem va quan ly ngan sach thoi gian.
 # TODO (KHU 5 - chu A): Cai dat solve(initial_state, timebound=120).
 
@@ -168,14 +167,189 @@ def h1(state, board=None):
     return total
 
 
+def _minimum_assignment_cost(costs):
+    """Chi phí ghép nhỏ nhất cho mọi hàng vào các cột khác nhau; O(R²G)."""
+    row_count = len(costs)
+    if row_count == 0:
+        return 0
+    goal_count = len(costs[0])
+    if row_count > goal_count:
+        return INF
+
+    # Thuật toán Hungarian hình chữ nhật; INF biểu diễn cặp không thể ghép.
+    row_potential = [0] * (row_count + 1)
+    goal_potential = [0] * (goal_count + 1)
+    matched_row = [0] * (goal_count + 1)
+    previous_goal = [0] * (goal_count + 1)
+
+    for row in range(1, row_count + 1):
+        matched_row[0] = row
+        current_goal = 0
+        min_reduced_cost = [INF] * (goal_count + 1)
+        used_goal = [False] * (goal_count + 1)
+
+        while True:
+            used_goal[current_goal] = True
+            current_row = matched_row[current_goal]
+            delta = INF
+            next_goal = 0
+            for goal in range(1, goal_count + 1):
+                if used_goal[goal]:
+                    continue
+                reduced_cost = (
+                    costs[current_row - 1][goal - 1]
+                    - row_potential[current_row]
+                    - goal_potential[goal]
+                )
+                if reduced_cost < min_reduced_cost[goal]:
+                    min_reduced_cost[goal] = reduced_cost
+                    previous_goal[goal] = current_goal
+                if min_reduced_cost[goal] < delta:
+                    delta = min_reduced_cost[goal]
+                    next_goal = goal
+
+            if delta == INF:
+                return INF
+            for goal in range(goal_count + 1):
+                if used_goal[goal]:
+                    row_potential[matched_row[goal]] += delta
+                    goal_potential[goal] -= delta
+                else:
+                    min_reduced_cost[goal] -= delta
+            current_goal = next_goal
+            if matched_row[current_goal] == 0:
+                break
+
+        while True:
+            next_goal = previous_goal[current_goal]
+            matched_row[current_goal] = matched_row[next_goal]
+            current_goal = next_goal
+            if current_goal == 0:
+                break
+
+    return -goal_potential[0]
+
+
+def h2(state, board=None):
+    """Ghép mỗi hộp với một đích khác nhau theo push-distance; O(B²G)."""
+    if board is None:
+        board = build_board(state)
+    boxes = tuple(state.boxes)
+    if not boxes:
+        return 0
+    if len(boxes) > len(board.goals):
+        return INF
+
+    costs = []
+    for box_x, box_y in boxes:
+        if not (0 <= box_x < board.W and 0 <= box_y < board.H):
+            return INF
+        cell = box_y * board.W + box_x
+        costs.append(tuple(distances[cell] for distances in board.pdc))
+    return _minimum_assignment_cost(costs)
+
+
+def h3(state, board=None):
+    """h2 cộng cận dưới bước đi trước lần đẩy đầu; O(N+B²G)."""
+    if board is None:
+        board = build_board(state)
+    push_bound = h2(state, board)
+    if push_bound == INF or push_bound == 0:
+        return push_bound
+
+    # Khoảng cách đi bộ chỉ xét tường; bỏ hộp để vẫn là cận dưới.
+    walk_distance = [INF] * board.N
+    queue = deque()
+    for robot_x, robot_y in state.robots:
+        if 0 <= robot_x < board.W and 0 <= robot_y < board.H:
+            cell = robot_y * board.W + robot_x
+            if walk_distance[cell] == INF:
+                walk_distance[cell] = 0
+                queue.append(cell)
+    while queue:
+        current = queue.popleft()
+        for neighbor in board.nbr[current]:
+            if neighbor >= 0 and walk_distance[neighbor] == INF:
+                walk_distance[neighbor] = walk_distance[current] + 1
+                queue.append(neighbor)
+
+    # Bất kỳ lời giải chưa xong nào cũng cần một lần đẩy đầu tiên.
+    # Mọi lời giải phải đưa robot tới một ô hỗ trợ trước lần đẩy đó.
+    first_push_walk = INF
+    for box_x, box_y in state.boxes:
+        if not (0 <= box_x < board.W and 0 <= box_y < board.H):
+            return INF
+        cell = box_y * board.W + box_x
+        for direction in range(4):
+            destination = board.nbr[cell][direction]
+            support = board.nbr[cell][(direction + 2) % 4]
+            if destination >= 0 and support >= 0:
+                first_push_walk = min(
+                    first_push_walk, walk_distance[support])
+    if first_push_walk == INF:
+        return INF
+    return push_bound + first_push_walk
+
+
 HEURISTICS = {
     "h0": h_zero,
     "manhattan": h_box_manhattan,
     "h1": h1,
+    "h2": h2,
+    "h3": h3,
 }
 
+
+def is_dead_static(state, board):
+    """True nếu hộp nằm ngoài bàn hoặc trên ô không thể đẩy tới đích; O(B)."""
+    for box_x, box_y in state.boxes:
+        if not (0 <= box_x < board.W and 0 <= box_y < board.H):
+            return True
+        if box_y * board.W + box_x in board.dead:
+            return True
+    return False
+
+
+def has_frozen_box_deadlock(state, board):
+    """True nếu có hộp bị khóa bởi tường/hộp đã khóa mà không ở đích; O(B²)."""
+    boxes = set()
+    for box_x, box_y in state.boxes:
+        if not (0 <= box_x < board.W and 0 <= box_y < board.H):
+            return True
+        boxes.add(box_y * board.W + box_x)
+
+    frozen = set()
+    while True:
+        newly_frozen = set()
+        for cell in boxes - frozen:
+            horizontal_blocked = (
+                board.nbr[cell][1] < 0 or board.nbr[cell][3] < 0
+                or board.nbr[cell][1] in frozen
+                or board.nbr[cell][3] in frozen
+            )
+            vertical_blocked = (
+                board.nbr[cell][0] < 0 or board.nbr[cell][2] < 0
+                or board.nbr[cell][0] in frozen
+                or board.nbr[cell][2] in frozen
+            )
+            if horizontal_blocked and vertical_blocked:
+                newly_frozen.add(cell)
+        if not newly_frozen:
+            break
+        frozen.update(newly_frozen)
+
+    goals = set(board.goals)
+    return any(cell not in goals for cell in frozen)
+
+
+def is_dead(state, board):
+    """Kết hợp ô dead tĩnh và freeze deadlock đã chứng minh được; O(B²)."""
+    return (is_dead_static(state, board)
+            or has_frozen_box_deadlock(state, board))
+
+
 def is_dead_none(state):
-    """Không cắt state nào khi chưa có deadlock detector; O(1)."""
+    """Deadlock checker mặc định không cắt state nào; O(1)."""
     return False
 
 
@@ -184,6 +358,9 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
     """Tìm đường bằng A*; O(E log E) thời gian, O(E) bộ nhớ trong trường hợp xấu."""
     stats = {"expanded": 0, "generated": 0, "stale": 0,
              "pruned_h": 0, "pruned_dead": 0, "reason": "exhausted"}
+    if is_dead(initial_state):
+        stats["reason"] = "deadlock_at_start"
+        return None, stats
     h0 = heuristic(initial_state)
     if h0 >= INF:
         stats["reason"] = "h_inf_at_start"
@@ -263,23 +440,24 @@ def bfs_v0(initial_state, deadline, max_states=MAX_STATES):
 
 
 def solve(initial_state, timebound=120):
-    """Giải bằng A*; thời gian O(E log E), bộ nhớ O(E) trong trường hợp xấu."""
+    """Giải bằng A*, h1 và deadlock ô tĩnh; O(E log E) thời gian, O(E) bộ nhớ."""
     #Trả về False ngay nếu hết thời gian mà chưa tìm đc lời giải
     if initial_state is None or timebound is None or timebound <= 0:
         return False
 
     #Thiết lập thời gian kết thúc (đang để thời gian chạy là 85% của timebound)
     deadline = time.monotonic() + timebound * TIME_FRACTION
-    if HEURISTIC == "h1":
-        board = build_board(initial_state)
-        heuristic = lambda state: h1(state, board)
+    board = build_board(initial_state)
+    if HEURISTIC in ("h1", "h2", "h3"):
+        heuristic = lambda state: HEURISTICS[HEURISTIC](state, board)
     else:
         heuristic = HEURISTICS.get(HEURISTIC, h_zero)
+    deadlock = lambda state: is_dead(state, board)
     gc_was_enabled = gc.isenabled()
     if USE_GC_DISABLE:
         gc.disable()
     try:
-        goal, _ = astar(initial_state, deadline, heuristic, is_dead_none)
+        goal, _ = astar(initial_state, deadline, heuristic, deadlock)
     except MemoryError:
         goal = None
     finally:

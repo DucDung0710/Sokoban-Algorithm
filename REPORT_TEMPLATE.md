@@ -29,9 +29,27 @@ Một bước đẩy đưa một hộp qua một cạnh của đồ thị đẩy
 của hộp chỉ có thể giảm tối đa một. Các hộp còn lại không đổi, nên
 `h1(s) <= 1 + h1(s')` cho mọi bước hợp lệ `s -> s'`.
 
+`h2` ghép mỗi hộp với một đích riêng bằng chi phí đẩy tĩnh nhỏ nhất. Trong mọi
+lời giải, các hộp kết thúc ở các đích khác nhau; khoảng cách đẩy tĩnh của mỗi
+cặp không vượt số lần đẩy thực tế của hộp đó. Tối ưu hóa trên các ghép hợp lệ
+vẫn không vượt chi phí của ghép xuất hiện trong lời giải, nên `h2` admissible.
+
+`h3` cộng `h2` với khoảng cách đi bộ nhỏ nhất từ bất kỳ robot nào tới một ô hỗ
+trợ hình học cho một lần đẩy đầu tiên. BFS bỏ qua hộp nên khoảng cách này không
+lớn hơn số bước đi bộ trước lần đẩy đầu thực tế. Phần đi bộ đó tách biệt với
+các lần đẩy được `h2` đếm, vì vậy tổng vẫn admissible. Cần kiểm chứng thực
+nghiệm trước khi tuyên bố tính consistent của `h2`/`h3`.
+
+Freeze detector chỉ đánh dấu hộp là bị khóa khi cả hai trục đẩy đều bị chặn
+bởi tường hoặc hộp đã được chứng minh khóa; chỉ cắt state nếu hộp bị khóa
+không ở đích. Đây là phép kiểm tra bảo thủ, không bao phủ toàn bộ deadlock
+động.
+
 ## 3. Thực nghiệm
 Ghi các map đã thử, có giải được hay không và số bước của lời giải.
 Có thể ghi thêm thời gian để phân tích, dù thời gian không trực tiếp tính điểm.
+Chạy và lưu số liệu so sánh `h0`–`h3` cùng bật/tắt deadlock trên map 1, 4, 6
+và map tự tạo; chưa điền số liệu trước khi chạy trên môi trường dự án.
 
 ## 4. Hạn chế và nguồn tham khảo
 Nêu phần chưa hoàn thiện, tài liệu, mã nguồn và công cụ AI đã sử dụng.
