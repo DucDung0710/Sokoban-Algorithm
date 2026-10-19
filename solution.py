@@ -356,10 +356,20 @@ def is_dead_none(state):
 
 
 def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
-          max_states=MAX_STATES):
-    """Tìm đường bằng A*; O(E log E) thời gian, O(E) bộ nhớ trong trường hợp xấu."""
+          max_states=MAX_STATES, weight=1.0, bound=INF):
+    """A* có trọng số và cận cắt; O(E log E) thời gian, O(E) bộ nhớ.
+
+    - Heap xếp theo f = g + weight * h. weight = 1 là A* thường (tối ưu khi h
+      admissible); weight > 1 tìm nhanh hơn, chi phí <= weight * tối ưu.
+    - bound: chi phí lời giải tốt nhất đã có. Node có g + h >= bound bị cắt vì
+      với h admissible, mọi lời giải đi qua nó đều dài >= bound.
+    - Kiểm đích lúc lấy ra; best_g + bỏ entry cũ (lazy deletion), cho phép mở lại.
+    - stats["reason"] == "exhausted" khi có bound nghĩa là: không tồn tại lời giải
+      ngắn hơn bound (nếu h admissible và is_dead sound).
+    """
     stats = {"expanded": 0, "generated": 0, "stale": 0,
-             "pruned_h": 0, "pruned_dead": 0, "reason": "exhausted"}
+             "pruned_h": 0, "pruned_dead": 0, "pruned_bound": 0,
+             "reason": "exhausted"}
     if is_dead(initial_state):
         stats["reason"] = "deadlock_at_start"
         return None, stats
@@ -367,11 +377,15 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
     if h0 >= INF:
         stats["reason"] = "h_inf_at_start"
         return None, stats
+    if h0 >= bound:
+        stats["pruned_bound"] += 1
+        return None, stats
 
     tie = itertools.count()
     start_key = initial_state.hashable_state()
     best_g = {start_key: 0}
-    heap = [(h0, 0, next(tie), initial_state)]
+    heap = [(weight * h0, 0, next(tie), initial_state)]
+    push, pop = heapq.heappush, heapq.heappop
     pops = 0
 
     while heap:
@@ -380,7 +394,7 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
             stats["reason"] = "timeout"
             return None, stats
 
-        _, neg_g, _, state = heapq.heappop(heap)
+        _, neg_g, _, state = pop(heap)
         g = -neg_g
         key = state.hashable_state()
         if g > best_g[key]:
@@ -391,9 +405,9 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
             return state, stats
 
         stats["expanded"] += 1
+        child_g = g + 1
         for child in state.successors():
             child_key = child.hashable_state()
-            child_g = g + 1
             old_g = best_g.get(child_key)
             if old_g is not None and child_g >= old_g:
                 continue
@@ -404,9 +418,11 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
             if child_h >= INF:
                 stats["pruned_h"] += 1
                 continue
+            if child_g + child_h >= bound:
+                stats["pruned_bound"] += 1
+                continue
             best_g[child_key] = child_g
-            heapq.heappush(
-                heap, (child_g + child_h, -child_g, next(tie), child))
+            push(heap, (child_g + weight * child_h, -child_g, next(tie), child))
             stats["generated"] += 1
 
         if len(best_g) > max_states:
