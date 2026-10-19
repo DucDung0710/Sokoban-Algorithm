@@ -130,26 +130,28 @@ def precompute_push_dist(board):
 
 
 def start_key(state):
-    """Chuyển SokobanState sang state nội bộ (robots, boxes); O(R + B)."""
-    W = state.width
-    robots = tuple(y * W + x for (x, y) in state.robots)
-    boxes = 0
+    """Chuyển SokobanState sang state nội bộ (robots, boxes)"""
+    W = state.width                                                 #Lấy chiều rộng của board
+    robots = tuple(y * W + x for (x, y) in state.robots)            #Lấy vị trí ban đầu của robot
+    boxes = 0                                                       
     for (x, y) in state.boxes:
-        boxes |= 1 << (y * W + x)
-    return (robots, boxes)
+        boxes |= 1 << (y * W + x)                                   #Tìm vị trí thùng và lưu vào boxes bằng cách sử dụng bitmask
+        #Kiếm tra ô p có thùng hay k bằng cách (boxes >> p) & 1 (1 nếu có thùng, 0 nếu không)
+    return (robots, boxes)                                          #Trả về state nội bộ gồm vị trí robot và bitmask thùng
  
  
 def is_goal(b, s):
-    """True khi không có thùng nào nằm ngoài ô đích; O(1).
- 
-    boxes & ~goal_mask giữ lại các thùng không ở đích: bằng 0 nghĩa là thắng.
+    """True khi không có thùng nào nằm ngoài ô đích
     Số ô đích có thể nhiều hơn số thùng nên không so sánh bằng.
     """
-    return (s[1] & ~b.goal_mask) == 0
+    return (s[1] & ~b.goal_mask) == 0                               #s[1] là boxes, b.goal_mask là bitmask của các ô đích
+                                                                    #Nếu tất cả các thùng đều nằm trong các ô đích
+                                                                    #thì boxes & ~goal_mask sẽ bằng 0
+                                                                    #nghĩa là không có thùng nào nằm ngoài ô đích.
  
  
 def cells(mask):
-    """Duyệt chỉ số các bit bằng 1 của mask, từ thấp lên cao; O(số bit)."""
+    """Duyệt chỉ số các bit bằng 1 của mask, từ thấp lên cao"""
     while mask:
         low = mask & -mask              # bit 1 thấp nhất
         yield low.bit_length() - 1      # chỉ số của bit đó
