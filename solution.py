@@ -150,14 +150,6 @@ def is_goal(b, s):
                                                                     #nghĩa là không có thùng nào nằm ngoài ô đích.
  
  
-def cells(mask):
-    """Duyệt chỉ số các bit bằng 1 của mask, từ thấp lên cao"""
-    while mask:
-        low = mask & -mask              # bit 1 thấp nhất
-        yield low.bit_length() - 1      # chỉ số của bit đó
-        mask ^= low                     # bỏ bit đó
- 
- 
 def successors_fast(b, s):
     """Sinh các nước đi từ state nội bộ s, không tạo SokobanState.
  
@@ -169,23 +161,25 @@ def successors_fast(b, s):
     nbr = b.nbr
     act = b.act
     out = []
-    for i, r in enumerate(robots):
-        row = nbr[r]
-        for d in range(4):
-            t = row[d]                          # ô robot sắp bước tới
-            if t < 0 or t in robots:            # tường, ngoài bàn, hoặc robot khác
+    for i, r in enumerate(robots):              #Duyệt qua từng robot, r là vị trí hiện tại của robot i
+        row = nbr[r]                            #Lấy danh sách các ô kề của robot i
+        for d in range(4):                      #Thử đi cả 4 hướng
+            t = row[d]                         
+            if t < 0 or t in robots:            #Nếu là tường, ngoài bàn, hoặc robot khác thì bỏ qua hướng này
                 continue
-            if (boxes >> t) & 1:                # phía trước có thùng: thử đẩy
-                u = nbr[t][d]                   # ô phía sau thùng
-                if u < 0 or (boxes >> u) & 1 or u in robots:
-                    continue                    # không đẩy được
-                nb = boxes ^ (1 << t) ^ (1 << u)    # thùng rời t, đến u (hai phép XOR)
-                pushed = u
-            else:                               # đi bộ
+            if (boxes >> t) & 1:                #Nếu phía trước có thùng thì thử đẩy
+                u = nbr[t][d]                   #Ô phía sau thùng
+                if u < 0 or (boxes >> u) & 1 or u in robots:            #Kiểm tra ô phía sau thùng có trống không
+                    continue                    #Không đẩy được thì bỏ qua hướng này
+                nb = boxes ^ (1 << t) ^ (1 << u)    #Cập nhật vị trí thùng: rời t, đến u
+                pushed = u                      #Lưu lại ô thùng vừa được đẩy tới
+            else:                               #Nếu phía trước không có thùng thì chỉ đi bộ
                 nb = boxes
                 pushed = None
-            out.append((act[i][d], (robots[:i] + (t,) + robots[i + 1:], nb), pushed))
-    return out
+            out.append((act[i][d]               #Lấy tên hành động theo robot i và hướng d
+                        , (robots[:i] + (t,) + robots[i + 1:], nb)      #Cập nhật vị trí robot i sang t, giữ nguyên các robot khác
+                        , pushed))            
+    return out                                  #Danh sách chứa các hành động hợp lệ  
  
  
 def rebuild(initial_state, actions):
@@ -194,15 +188,17 @@ def rebuild(initial_state, actions):
     Mỗi state con do framework tạo nên có đúng parent, action, gval và validation.py
     chấp nhận. initial_state chỉ được đọc, không bị sửa. Chi phí O(L * 4k).
     """
-    cur = initial_state
-    for a in actions:
-        for c in cur.successors():
-            if c.action == a:
+    cur = initial_state                         #Bắt đầu từ trạng thái ban đầu của Sokoban
+    for a in actions:                           #Duyệt lần lượt từng hành động trong lời giải
+        for c in cur.successors():              #Lấy danh sách các trạng thái kế tiếp có thể đi đến từ trạng thái hiện tại
+            if c.action == a:                   #Tìm trạng thái có hành động trùng với hành động cần thực hiện
                 cur = c
-                break
+                break                           #Đã tìm được trạng thái phù hợp, thoát khỏi vòng lặp bên trong
         else:
+            #Nếu duyệt hết successors() mà không tìm thấy hành động hợp lệ,
+            #nghĩa là hành động trong danh sách actions không thể thực hiện
             raise RuntimeError('action khong hop le: ' + a)
-    return cur
+    return cur                                  #Trả về trạng thái cuối cùng sau khi thực hiện tất cả hành động
 
 
 def h_zero(state):
