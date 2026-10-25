@@ -5,7 +5,7 @@
 # TODO (KHU 4 - chu A): Cai dat tim kiem va quan ly ngan sach thoi gian.
 # TODO (KHU 5 - chu A): Cai dat solve(initial_state, timebound=120).
 
-#Vibe-code 70%
+
 
 # ==== Khu 0 === (A) Import, hằng số, cờ bật/tắt.
 from collections import deque
