@@ -34,16 +34,26 @@ lời giải, các hộp kết thúc ở các đích khác nhau; khoảng cách 
 cặp không vượt số lần đẩy thực tế của hộp đó. Tối ưu hóa trên các ghép hợp lệ
 vẫn không vượt chi phí của ghép xuất hiện trong lời giải, nên `h2` admissible.
 
-`h3` cộng `h2` với khoảng cách đi bộ nhỏ nhất từ bất kỳ robot nào tới một ô hỗ
-trợ hình học cho một lần đẩy đầu tiên. BFS bỏ qua hộp nên khoảng cách này không
-lớn hơn số bước đi bộ trước lần đẩy đầu thực tế. Phần đi bộ đó tách biệt với
-các lần đẩy được `h2` đếm, vì vậy tổng vẫn admissible. Cần kiểm chứng thực
-nghiệm trước khi tuyên bố tính consistent của `h2`/`h3`.
+`h3` cộng `h2` với `max(0, d_min - 1)`, trong đó `d_min` là Manhattan nhỏ
+nhất giữa vị trí của robot và hộp. Trước lần đẩy đầu tiên, một robot phải
+đến ô kề một hộp; vì vậy cần ít nhất `d_min - 1` bước đi bộ. Các bước đi bộ
+không nằm trong số lần đẩy mà `h2` đếm, nên tổng vẫn admissible.
 
-Freeze detector chỉ đánh dấu hộp là bị khóa khi cả hai trục đẩy đều bị chặn
-bởi tường hoặc hộp đã được chứng minh khóa; chỉ cắt state nếu hộp bị khóa
-không ở đích. Đây là phép kiểm tra bảo thủ, không bao phủ toàn bộ deadlock
-động.
+`h2` consistent: bước đi bộ không đổi hộp; khi đẩy một hộp qua một cạnh đồ
+thị đẩy, ghép tối ưu ở state sau tạo ra một ghép hợp lệ cho state trước với
+chi phí tăng nhiều nhất một. `h3` cũng consistent: bước đi bộ làm `d_min`
+giảm nhiều nhất một, còn ngay trước một lần đẩy robot đã đứng cạnh hộp nên
+phần cộng thêm bằng không. Sau push, `h2` giảm nhiều nhất một và phần cộng
+thêm không âm.
+
+`h2` dùng DP bitmask khi có tối đa 8 đích và Hungarian khi có nhiều hơn; cache
+theo cấu hình hộp có giới hạn `CONFIG["h_cache_max"]`.
+
+Freeze detector coi một trục bị khóa khi bị chặn bởi tường, hai ô chết, hoặc
+hộp đã được chứng minh frozen; chỉ cắt state nếu hộp bị khóa không ở đích.
+Sau mỗi lần đẩy, detector chỉ kiểm hộp vừa đẩy và các hộp kề. Đây là phép
+kiểm tra bảo thủ, không bao phủ toàn bộ deadlock động. Có thể bật/tắt các mức
+qua `CONFIG["dead"]`: `none`, `cells`, `freeze`.
 
 ## 3. Thực nghiệm
 Ghi các map đã thử, có giải được hay không và số bước của lời giải.

@@ -3,7 +3,7 @@ import time
 import unittest
 
 from solution import (
-    INF, _minimum_assignment_cost, astar, build_board, h1, h2, h3, h_zero,
+    CONFIG, INF, _minimum_assignment_cost, astar, build_board, h1, h2, h3, h_zero,
     has_frozen_box_deadlock, is_dead, is_dead_static,
 )
 from sokoban import SokobanState, sokoban_goal_state
@@ -64,8 +64,36 @@ class PushDistanceTests(unittest.TestCase):
                     solvable_states += 1
                     for value in values:
                         self.assertLessEqual(value, exact)
+                    next_values = []
+                    for child in state.successors():
+                        child_board = board
+                        child_values = (
+                            h1(child, child_board),
+                            h2(child, child_board),
+                            h3(child, child_board),
+                        )
+                        next_values.append(child_values)
+                    for value_index, value in enumerate(values):
+                        for child_values in next_values:
+                            self.assertLessEqual(
+                                value, 1 + child_values[value_index])
 
         self.assertGreater(solvable_states, 0)
+
+    def test_h2_cache_obeys_configured_limit(self):
+        old_limit = CONFIG["h_cache_max"]
+        try:
+            CONFIG["h_cache_max"] = 1
+            first = corridor_state((0, 1), (1, 1))
+            second = corridor_state((1, 1), (2, 1))
+            board = build_board(first)
+            first_value = h2(first, board)
+            self.assertEqual(h2(first, board), first_value)
+            self.assertEqual(len(board.h_cache), 1)
+            h2(second, board)
+            self.assertLessEqual(len(board.h_cache), 1)
+        finally:
+            CONFIG["h_cache_max"] = old_limit
 
     def test_reverse_push_requires_robot_support_square(self):
         """Ô sau thùng phải sàn; góc không thể đẩy ra được đánh dấu dead."""
@@ -168,6 +196,54 @@ class StaticDeadlockTests(unittest.TestCase):
         )
         self.assertFalse(
             has_frozen_box_deadlock(box_on_goal, build_board(box_on_goal)))
+
+    def test_deadlock_modes_can_be_disabled_or_selected(self):
+        walls = frozenset(((1, 2), (3, 2), (2, 1), (2, 3)))
+        state = SokobanState(
+            "START", 0, None, 5, 5, ((0, 0),),
+            frozenset(((2, 2),)), frozenset(((4, 4),)), walls,
+        )
+        board = build_board(state)
+        old_mode = CONFIG["dead"]
+        try:
+            CONFIG["dead"] = "none"
+            self.assertFalse(is_dead(state, board))
+            CONFIG["dead"] = "cells"
+            self.assertTrue(is_dead(state, board))
+            CONFIG["dead"] = "freeze"
+            self.assertTrue(is_dead(state, board))
+        finally:
+            CONFIG["dead"] = old_mode
+
+    def test_pushed_box_freeze_check_is_local(self):
+        walls = frozenset(((1, 2), (3, 2), (2, 1), (2, 3)))
+        state = SokobanState(
+            "START", 0, None, 7, 5, ((0, 0),),
+            frozenset(((2, 2), (5, 2))),
+            frozenset(((4, 4),)), walls,
+        )
+        board = build_board(state)
+        old_mode = CONFIG["dead"]
+        try:
+            CONFIG["dead"] = "freeze"
+            self.assertFalse(is_dead(state, board, pushed=5 + 2 * board.W))
+            self.assertTrue(is_dead(state, board, pushed=2 + 2 * board.W))
+        finally:
+            CONFIG["dead"] = old_mode
+
+    def test_deadlock_detector_is_sound_on_small_corridor(self):
+        old_mode = CONFIG["dead"]
+        try:
+            CONFIG["dead"] = "freeze"
+            for robot_x in range(5):
+                for box_x in range(5):
+                    if robot_x == box_x:
+                        continue
+                    state = corridor_state((robot_x, 1), (box_x, 1))
+                    if is_dead(state, build_board(state)):
+                        self.assertIsNone(shortest_solution_steps(state))
+        finally:
+            CONFIG["dead"] = old_mode
 
 
 if __name__ == "__main__":

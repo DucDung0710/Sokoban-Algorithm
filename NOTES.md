@@ -11,54 +11,55 @@ state có hộp nằm ở ô chắc chắn không thể đưa tới bất kỳ �
 | `h_box_manhattan(state)` | Cộng khoảng cách Manhattan từ mỗi hộp tới đích gần nhất; dễ tính nhưng không xét tường. |
 | `h1(state, board)` | Cộng số lần đẩy tĩnh ít nhất của mỗi hộp tới một đích. Trả vô cực nếu hộp không thể tới đích trên đồ thị đẩy; là cận dưới admissible. |
 | `_minimum_assignment_cost(costs)` | Dùng Hungarian để tìm ghép chi phí nhỏ nhất giữa các hộp và các đích khác nhau; trả vô cực nếu không tồn tại ghép hợp lệ. |
-| `h2(state, board)` | Tạo bảng push-distance hộp–đích rồi gọi Hungarian; tránh đánh giá hai hộp như thể cùng một đích có thể nhận cả hai. |
-| `h3(state, board)` | Cộng `h2` với khoảng cách tường-ngắn nhất từ robot tới vị trí hỗ trợ của một lần đẩy đầu tiên. BFS bỏ qua hộp để phần cộng thêm vẫn là cận dưới. |
+| `h2(state, board)` | Ghép hộp–đích bằng DP bitmask khi có tối đa 8 đích, Hungarian khi nhiều hơn; cache theo bitmask hộp với giới hạn `CONFIG["h_cache_max"]`. |
+| `h3(state, board)` | Cộng `h2` với `max(0, d_min - 1)`, trong đó `d_min` là khoảng cách Manhattan nhỏ nhất giữa robot và hộp. Đây là cận dưới số bước đi bộ trước lần đẩy đầu. |
 | `is_dead_static(state, board)` | Trả đúng nếu hộp nằm ngoài bàn hoặc trên ô không thể đẩy tới đích; A* dùng hàm này để cắt state đó. |
-| `has_frozen_box_deadlock(state, board)` | Lan truyền các hộp bị khóa bởi tường/hộp đã khóa theo hai trục; báo deadlock nếu hộp bị khóa không nằm trên đích. |
-| `is_dead(state, board)` | Kết hợp phát hiện ô dead tĩnh và freeze deadlock; được `solve` truyền cho A*. |
+| `has_frozen_box_deadlock(state, board, candidates)` | Kiểm tra các hộp ứng viên; một trục bị khóa bởi tường, hai ô dead hoặc hộp đã chứng minh frozen. |
+| `is_dead(state, board, pushed)` | Hỗ trợ `CONFIG["dead"]` là `none`, `cells` hoặc `freeze`; sau push chỉ xét ô đích và các hộp kề. |
 | `is_dead_none(state)` | Hàm mặc định không loại state nào, dùng khi gọi A* mà không truyền deadlock checker. |
 
-`solve` tiền tính bảng một lần, chọn `h1` (cấu hình mặc định), rồi truyền
-heuristic và bộ phát hiện deadlock vào `astar`. Deadlock hiện tại là deadlock
-tĩnh và freeze có thể chứng minh bằng tường/hộp đã khóa; chưa xử lý mọi dạng
-deadlock động hoặc mẫu deadlock phức tạp.
+`solve` tiền tính bảng một lần, chọn heuristic theo `CONFIG["h"]` (mặc định là
+`h2`), rồi truyền heuristic và bộ phát hiện deadlock vào tìm kiếm
+anytime với các trọng số giảm dần trong `WEIGHTS`. Khi tìm được lời giải, các
+pha tiếp theo cố gắng cải thiện số bước trong phần thời gian còn lại. Deadlock
+hiện tại là deadlock tĩnh và freeze có thể chứng minh bằng tường/hộp đã khóa;
+chưa xử lý mọi dạng deadlock động hoặc mẫu deadlock phức tạp. Dùng
+`CONFIG["dead"]` để bật/tắt theo từng mức: `none`, `cells`, `freeze`.
 
 `h1`, `h2`, `h3` đều là cận dưới: lần lượt ghép hộp với đích gần nhất, ghép
 hộp với các đích khác nhau tối ưu, và cộng thêm số bước đi bộ tối thiểu trước
-lần đẩy đầu. Các heuristic có thể chọn bằng biến `HEURISTIC` trong
-`solution.py`; mặc định vẫn là `h1`.
+lần đẩy đầu. `h1` và `h2` consistent theo cạnh đẩy; `h3` cũng consistent vì
+phần Manhattan giảm nhiều nhất một ở bước đi bộ và bằng 0 ngay trước push.
 
 Chạy kiểm thử bằng `python -m unittest discover -s tests -v` từ thư mục dự án.
-Kiểm thử đã chạy trên Python 3.15.0: 7 test phần C, 7 test framework và 3
-public test đều qua. Thêm kiểm tra vét cạn map 4: trong 127,512 state đến
-được bằng BFS, 12,936 state có thể giải; `h1`, `h2`, `h3` không vượt quá
-khoảng cách lời giải tối ưu của bất kỳ state giải được nào.
+Kiểm thử hiện tại chạy trên Python 3.13.5: 11 test phần C, 7 test framework,
+3 public test và 7 test thuật toán hỗ trợ đều qua. Kiểm tra vét cạn map 4
+trước đó chạy trên Python 3.15.0: trong 127,512 state đến được bằng BFS,
+12,936 state có thể giải; `h1`, `h2`, `h3` không vượt quá khoảng cách lời
+giải tối ưu của bất kỳ state giải được nào.
 
-Benchmark A* dưới đây chạy với ngân sách 1.5 giây/lượt. Ghi số state mở rộng;
-deadlock là số state bị cắt. `timeout` nghĩa là chưa tìm được đích trước hạn.
-Mỗi cặp số trong cột mở rộng là `tắt / bật deadlock`.
+Benchmark A* dưới đây chạy với ngân sách 1.5 giây/lượt trên map 1, 4, 6
+(map 0, 3, 5 trong `PROBLEMS`). Mỗi ô ghi `state mở rộng / deadlock bị cắt`;
+`timeout` nghĩa là chưa tìm được đích trước hạn.
 
-| Map | Heuristic | Mở rộng tắt / bật | Deadlock bị cắt (bật) | Kết quả |
-| --- | --- | ---: | ---: | --- |
-| 1 | h0 | 51,916 / 48,499 | 759 | goal / timeout |
-| 1 | h1 | 6,494 / 6,490 | 4 | goal / goal |
-| 1 | h2 | 6,434 / 6,434 | 4 | goal / goal |
-| 1 | h3 | 5,089 / 5,089 | 4 | goal / goal |
-| 4 | h0 | 10,874 / 2,814 | 1,071 | goal / goal |
-| 4 | h1 | 634 / 634 | 320 | goal / goal |
-| 4 | h2 | 542 / 542 | 260 | goal / goal |
-| 4 | h3 | 467 / 467 | 260 | goal / goal |
-| 6 | h0 | 61,999 / 30,068 | 4,009 | timeout / goal |
-| 6 | h1 | 17,871 / 17,399 | 2,808 | goal / goal |
-| 6 | h2 | 12,173 / 11,977 | 2,080 | goal / goal |
-| 6 | h3 | 10,336 / 10,212 | 2,080 | goal / goal |
+| Map | h | Không deadlock | Freeze |
+| --- | --- | ---: | ---: |
+| 1 | h0 | 11,999 / 0 (timeout) | 13,499 / 1,382 (timeout) |
+| 1 | h1 | 6,494 / 0 (16 bước) | 6,354 / 460 (16 bước) |
+| 1 | h2 | 6,434 / 0 (16 bước) | 6,298 / 456 (16 bước) |
+| 1 | h3 | 6,108 / 0 (16 bước) | 5,976 / 456 (16 bước) |
+| 4 | h0 | 10,874 / 0 (10 bước) | 2,814 / 1,071 (10 bước) |
+| 4 | h1 | 634 / 0 (10 bước) | 634 / 320 (10 bước) |
+| 4 | h2 | 542 / 0 (10 bước) | 542 / 260 (10 bước) |
+| 4 | h3 | 467 / 0 (10 bước) | 467 / 260 (10 bước) |
+| 6 | h0 | 15,499 / 0 (timeout) | 15,999 / 2,924 (timeout) |
+| 6 | h1 | 17,871 / 0 (30 bước) | 13,993 / 2,590 (timeout) |
+| 6 | h2 | 12,173 / 0 (30 bước) | 11,015 / 2,136 (30 bước) |
+| 6 | h3 | 11,175 / 0 (30 bước) | 10,137 / 2,136 (30 bước) |
 
-Tất cả các lượt tìm được lời giải đều trả cùng độ dài cho mỗi map: map 1 là
-16 bước, map 4 là 10 bước, map 6 là 30 bước. Map tự tạo hành lang giải được
-trong 3 bước với cả bốn heuristic; A* mở rộng 4 state với `h0`, 3 state với
-`h1`/`h2`/`h3`. Thời gian chạy thực tế và số node có thể thay đổi theo máy.
-`h3` mở rộng ít state nhất trong các lượt đã giải; kết quả này chưa chứng minh
-nó luôn nhanh hơn trên mọi bản đồ.
+Tất cả lời giải tìm được đều có độ dài tối ưu đã ghi: map 1 là 16 bước, map 4
+là 10 bước, map 6 là 30 bước. Số node và timeout phụ thuộc máy; freeze check
+có thêm chi phí mỗi lần đẩy nên có thể chậm hơn dù số node giảm.
 
 ## C - Heuristics and Deadlocks
 
@@ -86,9 +87,9 @@ hợp đồng API công khai `solve(initial_state, timebound=120)`.
 
 ### Kiểm thử và benchmark
 
-- Bổ sung test cho Hungarian, admissibility của `h1`–`h3` so với BFS chính
-  xác trên bản đồ nhỏ, dead square, freeze deadlock (kể cả hộp đã ở đích) và
-  thao tác cắt state của A*.
+- Bổ sung test cho ghép cặp, admissibility/consistency của `h1`–`h3` so với BFS
+  trên bản đồ nhỏ, cache giới hạn, chế độ deadlock, dead square, freeze và
+  kiểm tra sound trên hành lang nhỏ.
 - Môi trường: Python 3.15.0; không cài package ngoài.
 - Kết quả `python -m unittest discover -s tests -v`: 7/7 test phần C qua.
 - Kết quả `python -m unittest test_framework -v`: 7/7 test framework qua.
@@ -113,10 +114,10 @@ hợp đồng API công khai `solve(initial_state, timebound=120)`.
 
 ### Giới hạn và lưu ý
 
-- Freeze detector có chủ đích bảo thủ; chưa bao phủ mọi freeze/deadlock nhiều
-  hộp hoặc deadlock động.
-- `h2`/`h3` chưa được khẳng định consistent; benchmark cho thấy hiệu quả trên
-  một số map mẫu, không đảm bảo tương tự trên mọi map.
+- Freeze detector chỉ kiểm quanh hộp vừa đẩy (và các hộp kề), nên có thể bỏ
+  sót freeze lan xa; bỏ sót an toàn nhưng có thể làm tăng số node.
+- Test hiện kiểm admissible và consistency của `h1`–`h3` trên các bàn nhỏ;
+  không thay thế được bộ kiểm vét cạn của D trên toàn bộ map 0–7.
 - `h0` chạm timeout ở một số lượt map 1 và map 6 với giới hạn 1.5 giây; các
   kết quả này được ghi là timeout, không tính là đã tìm thấy lời giải.
 - Benchmark thực nghiệm phụ thuộc máy và ngân sách thời gian; cần chạy lại
