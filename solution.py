@@ -1,10 +1,15 @@
-# TODO (KHU 0 - chu A): Khai bao import, hang so va co bat/tat.
-# TODO (KHU 1 - chu B): Xay board, state noi bo, successors_fast va rebuild.
-# PHAN C (vai tro C): Heuristic admissible va phat hien deadlock tinh.
-# TODO (KHU 4 - chu A): Cai dat tim kiem va quan ly ngan sach thoi gian.
-# TODO (KHU 5 - chu A): Cai dat solve(initial_state, timebound=120).
+"""Solver Sokoban nhiều robot cho môn Trí tuệ nhân tạo (UET).
 
+Tổ chức file theo 6 Khu, mỗi Khu có một người phụ trách:
+  Khu 0 (A): import, hằng số, cờ cấu hình CONFIG.
+  Khu 1 (B): Board, state nội bộ (robots, bitmask thùng), successors_fast, rebuild.
+  Khu 2 (C): heuristic admissible h0-h3 dựa trên khoảng cách đẩy.
+  Khu 3 (D, C làm): phát hiện deadlock sound (ô chết, freeze).
+  Khu 4 (A): tìm kiếm A* có trọng số, anytime, quản lý thời gian và bộ nhớ.
+  Khu 5 (A): solve(initial_state, timebound=120), giao diện framework gọi.
+"""
 
+# ==== Khu 0 === (A) Import, hằng số, cờ cấu hình.
 from collections import deque
 import gc
 import heapq
@@ -24,6 +29,9 @@ CONFIG = {
     "h": "h2",
     "dead": "freeze",
     "h_cache_max": 100000,
+    "engine": "framework",   # framework: search trên SokobanState | fast: khóa số nguyên (buổi 2)
+    "sym": True,             # coi các robot như nhau khi so state (chỉ engine fast)
+    "cap": "bisect",         # khi chạm trần: stop | bisect (chia đôi w, chỉ engine fast)
 }
 #Dãy trọng số cho anytime: w lớn tìm lời giải nhanh, w = 1 chứng minh tối ưu
 WEIGHTS = (5.0, 3.0, 2.0, 1.5, 1.0)
@@ -495,6 +503,152 @@ def is_dead(state, board, pushed=None):
         return False
     return has_frozen_box_deadlock(state, board, candidates)
 
+# ==== Khu 4 === (A) Tìm kiếm và quản lý thời gian, bộ nhớ.
+# ---- Khu 4a: biểu diễn khóa số nguyên cho engine "fast" ----
+# Khóa = bitmask thùng dịch trái R*S bit, ghép với ô của từng robot (mỗi robot S bit).
+# h và deadlock ở đây phải cho đúng cùng giá trị với Khu 2, 3 (tests/test_search.py kiểm).
+
+class FastCtx:
+    """Bảng tính một lần cho mỗi map, dùng cho search trên khóa số nguyên."""
+
+    __slots__ = ('b', 'R', 'S', 'RMASK', 'rows', 'xy')
+
+
+def make_ctx(board, n_robots):
+    """Tạo FastCtx từ Board đã tiền xử lý; O(N·G).
+
+    S = số bit đủ chứa chỉ số ô lớn nhất; rows[p] = chi phí đẩy từ ô p tới
+    từng đích (cột của board.pdc); xy[p] = tọa độ (x, y) của ô p.
+    """
+    c = FastCtx()
+    c.b = board
+    c.R = n_robots
+    c.S = max(1, board.N.bit_length())
+    c.RMASK = (1 << c.S) - 1
+    c.rows = tuple(tuple(d[p] for d in board.pdc) for p in range(board.N))
+    c.xy = tuple((p % board.W, p // board.W) for p in range(board.N))
+    return c
+
+
+def pack(c, robots, boxes):
+    """Ghép (ô robot, bitmask thùng) thành một số nguyên; O(R log R).
+
+    Khi CONFIG["sym"] bật, ô robot được sắp xếp trước khi ghép, nên hai state
+    chỉ khác nhau ở chỗ robot nào đứng ô nào cho ra cùng một khóa.
+    """
+    key = boxes
+    for r in (sorted(robots) if CONFIG["sym"] else robots):
+        key = (key << c.S) | r
+    return key
+
+
+def unpack(c, key):
+    """Tách khóa thành (list ô robot, bitmask thùng); O(R)."""
+    robots = [0] * c.R
+    for i in range(c.R - 1, -1, -1):
+        robots[i] = key & c.RMASK
+        key >>= c.S
+    return robots, key
+
+
+def _h2_mask(c, boxes):
+    """h2 tính từ bitmask thùng, dùng chung cache board.h_cache với h2 của C."""
+    b = c.b
+    if not boxes:
+        return 0
+    costs = [c.rows[p] for p in cells(boxes)]
+    if len(costs) > len(b.goals):
+        return INF
+    cached = b.h_cache.get(boxes)
+    if cached is not None:
+        return cached
+    if len(b.goals) <= 8:
+        assignments = {0: 0}
+        for row in costs:
+            next_assignments = {}
+            for used_goals, cost in assignments.items():
+                for goal, distance in enumerate(row):
+                    goal_bit = 1 << goal
+                    if used_goals & goal_bit or distance >= INF:
+                        continue
+                    next_mask = used_goals | goal_bit
+                    candidate = cost + distance
+                    if candidate < next_assignments.get(next_mask, INF):
+                        next_assignments[next_mask] = candidate
+            assignments = next_assignments
+            if not assignments:
+                break
+        result = min(assignments.values(), default=INF)
+    else:
+        result = _minimum_assignment_cost(costs)
+    cache_limit = CONFIG["h_cache_max"]
+    if cache_limit > 0:
+        if len(b.h_cache) >= cache_limit:
+            b.h_cache.clear()
+        b.h_cache[boxes] = result
+    return result
+
+
+def fast_h(c, name):
+    """Trả về hàm h(robots, boxes) cho engine fast, cùng giá trị với Khu 2.
+
+    Hỗ trợ "h0", "h1", "h2", "h3". h3 lấy Manhattan nhỏ nhất giữa robot và
+    MỌI thùng, kể cả thùng đã trên đích (giữ admissible, xem tài liệu nguyên lý).
+    """
+    pd_min, xy = c.b.pd_min, c.xy
+    if name == "h0":
+        return lambda robots, boxes: 0
+    if name == "h1":
+        def h1_fast(robots, boxes):
+            total = 0
+            for p in cells(boxes):
+                d = pd_min[p]
+                if d == INF:
+                    return INF
+                total += d
+            return total
+        return h1_fast
+    if name == "h2":
+        return lambda robots, boxes: _h2_mask(c, boxes)
+    if name == "h3":
+        def h3_fast(robots, boxes):
+            push_bound = _h2_mask(c, boxes)
+            if push_bound == INF or push_bound == 0:
+                return push_bound
+            if not robots:
+                return INF
+            box_xy = [xy[p] for p in cells(boxes)]
+            best = INF
+            for r in robots:
+                rx, ry = xy[r]
+                for bx, by in box_xy:
+                    d = abs(rx - bx) + abs(ry - by)
+                    if d < best:
+                        best = d
+            return push_bound + max(0, best - 1)
+        return h3_fast
+    raise ValueError("engine fast chỉ hỗ trợ h0, h1, h2, h3")
+
+
+def dead_after_push(b, boxes, pushed, mode):
+    """Deadlock sau khi một thùng vừa được đẩy tới ô pushed; cùng kết quả với is_dead.
+
+    boxes là bitmask thùng SAU khi đẩy. mode: "none" | "cells" | "freeze".
+    Chỉ xét thùng vừa đẩy và các thùng kề nó; thùng đóng băng trên đích không tính.
+    """
+    if mode == "none":
+        return False
+    if pushed in b.dead:
+        return True
+    if mode == "cells":
+        return False
+    goal_mask = b.goal_mask
+    candidates = (pushed,) + tuple(
+        n for n in b.nbr[pushed] if n >= 0 and (boxes >> n) & 1)
+    for cell in candidates:
+        if not (goal_mask >> cell) & 1 and _is_frozen(b, boxes, cell, frozenset()):
+            return True
+    return False
 
 def is_dead_none(state):
     """Deadlock checker mặc định không cắt state nào; O(1)."""
@@ -528,8 +682,8 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
         return None, stats
 
     tie = itertools.count()
-    start_key = initial_state.hashable_state()
-    best_g = {start_key: 0}
+    start = initial_state.hashable_state()
+    best_g = {start: 0}
     heap = [(weight * h0, 0, next(tie), initial_state)]
     push, pop = heapq.heappush, heapq.heappop
     pops = 0
