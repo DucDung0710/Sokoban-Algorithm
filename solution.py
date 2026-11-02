@@ -556,12 +556,12 @@ def _h2_mask(c, boxes):
     b = c.b
     if not boxes:
         return 0
+    cached = b.h_cache.get(boxes)       # tra cache trước khi dựng ma trận, giống h2 của C
+    if cached is not None:
+        return cached
     costs = [c.rows[p] for p in cells(boxes)]
     if len(costs) > len(b.goals):
         return INF
-    cached = b.h_cache.get(boxes)
-    if cached is not None:
-        return cached
     if len(b.goals) <= 8:
         assignments = {0: 0}
         for row in costs:
@@ -656,7 +656,7 @@ def is_dead_none(state):
 
 
 def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
-          max_states=MAX_STATES, weight=1.0, bound=INF):
+          max_states=None, weight=1.0, bound=INF):
     """A* có trọng số và cận cắt; O(E log E) thời gian, O(E) bộ nhớ.
 
     - Heap xếp theo f = g + weight * h. weight = 1 là A* thường (tối ưu khi h
@@ -667,6 +667,8 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
     - stats["reason"] == "exhausted" khi có bound nghĩa là: không tồn tại lời giải
       ngắn hơn bound (nếu h admissible và is_dead sound).
     """
+    if max_states is None:              # đọc lúc gọi để bench ghi đè được
+        max_states = MAX_STATES
     stats = {"expanded": 0, "generated": 0, "stale": 0,
              "pruned_h": 0, "pruned_dead": 0, "pruned_bound": 0,
              "reason": "exhausted"}
@@ -732,8 +734,10 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
     return None, stats
 
 
-def bfs_v0(initial_state, deadline, max_states=MAX_STATES):
+def bfs_v0(initial_state, deadline, max_states=None):
     """BFS dự phòng để so sánh; O(V·R(R+B)) thời gian, O(V(R+B)) bộ nhớ."""
+    if max_states is None:
+        max_states = MAX_STATES
     if sokoban_goal_state(initial_state):
         return initial_state
     queue = deque([initial_state])
@@ -758,7 +762,7 @@ def bfs_v0(initial_state, deadline, max_states=MAX_STATES):
 
 
 def anytime_search(initial_state, deadline, heuristic, deadlock,
-                   weights=WEIGHTS, max_states=MAX_STATES):
+                   weights=None, max_states=None):
     """Chạy weighted A* với w giảm dần, giữ lời giải tốt nhất; O(k·E log E).
 
     Mỗi pha dùng chi phí tốt nhất hiện có làm bound. Dừng sớm khi:
@@ -769,6 +773,10 @@ def anytime_search(initial_state, deadline, heuristic, deadlock,
     Trả về (state đích tốt nhất hoặc None, danh sách thống kê từng pha, đã chứng
     minh tối ưu hay chưa).
     """
+    if weights is None:                 # đọc lúc gọi để bench ghi đè được
+        weights = WEIGHTS
+    if max_states is None:
+        max_states = MAX_STATES
     best = None
     bound = INF
     phases = []
