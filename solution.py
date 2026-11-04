@@ -73,7 +73,7 @@ def build_board(state):
     #Bảng act[i] = (0 up, 1 right, 2 down, 3 left) cho robot i
     b.act = tuple(tuple('%d %s' % (i, n) for n in NAMES)
                   for i in range(len(state.robots)))
-    b.h_cache = {}
+    b.h_cache = {}                  #Cache h2 theo bitmask thùng
     precompute_push_dist(b)
     return b
 
@@ -150,7 +150,7 @@ def start_key(state):
         boxes |= 1 << (y * W + x)                                   #Tìm vị trí thùng và lưu vào boxes bằng cách sử dụng bitmask
         #Kiếm tra ô p có thùng hay k bằng cách (boxes >> p) & 1 (1 nếu có thùng, 0 nếu không)
     return (robots, boxes)                                          #Trả về state nội bộ gồm vị trí robot và bitmask thùng
-
+#Lưu bit của robot với box thành 1 với nhau làm giảm 1 nửa số bước cần làm
 
 def cells(mask):
     """Yield vị trí các bit được bật trong bitmask theo thứ tự tăng dần."""
@@ -203,7 +203,14 @@ def successors_fast(b, s):
                         , pushed))            
     return out                                  #Danh sách chứa các hành động hợp lệ  
  
- 
+def actions_of(goal):
+    acts = []
+    while goal.parent is not None:
+        acts.append(goal.action)
+        goal = goal.parent
+    acts.reverse()
+    return acts
+
 def rebuild(initial_state, actions):
     """Dựng lại chuỗi SokobanState thật từ danh sách action, bằng successors() của framework.
  
