@@ -203,13 +203,13 @@ def successors_fast(b, s):
                         , pushed))            
     return out                                  #Danh sách chứa các hành động hợp lệ  
  
-def actions_of(goal):
-    acts = []
+def actions(goal):
+    actions = []
     while goal.parent is not None:
         acts.append(goal.action)
         goal = goal.parent
-    acts.reverse()
-    return acts
+    actions.reverse()
+    return actions
 
 def rebuild(initial_state, actions):
     """Dựng lại chuỗi SokobanState thật từ danh sách action, bằng successors() của framework.
