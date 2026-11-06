@@ -17,26 +17,26 @@ import itertools
 import time
 from sokoban import sokoban_goal_state
 
-#Tỉ lệ thời gian đc dùng
+# Tỉ lệ thời gian được dùng trên timebound (phần còn lại để dọn bộ nhớ, trả kết quả)
 TIME_FRACTION = 0.85
-#Cứ mỗi 500 node được mở ra thì kiểm tra đồng hồ
+# Cứ mỗi CHECK_EVERY lần lấy node khỏi heap thì kiểm tra đồng hồ một lần
 CHECK_EVERY = 500
-#Số state tối đa được lưu trong visited, tránh tràn bộ nhớ
-MAX_STATES = 2000000 
+# Số state tối đa được lưu trong best_g, tránh tràn bộ nhớ
+MAX_STATES = 2000000
 INF = float("inf")
 USE_GC_DISABLE = True
 CONFIG = {
-    "h": "h2",
-    "dead": "freeze",
+    "h": "h2",               # h0 | h1 | h2 | h3
+    "dead": "freeze",        # none | cells | freeze
     "h_cache_max": 100000,
-    "engine": "framework",   # framework: search trên SokobanState | fast: khóa số nguyên (buổi 2)
-    "sym": True,             # coi các robot như nhau khi so state (chỉ engine fast)
-    "cap": "bisect",         # khi chạm trần: stop | bisect (chia đôi w, chỉ engine fast)
+    "sym": True,             # coi các robot như nhau khi ghép khóa (chỉ engine fast, Khu 4a)
 }
+# Thông tin lần solve() gần nhất, bench.py đọc: {"proved": bool, "phases": [...]}
+LAST_INFO = {}
 #Dãy trọng số cho anytime: w lớn tìm lời giải nhanh, w = 1 chứng minh tối ưu
 WEIGHTS = (5.0, 3.0, 2.0, 1.5, 1.0)
 
-# ==== Khu 1 === Xay board, state noi bo, successors_fast va rebuild.
+# ==== Khu 1 === (B) Xây board, state nội bộ, successors_fast và rebuild.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))     # up, right, down, left
 NAMES = ("up", "right", "down", "left")
 
@@ -73,7 +73,7 @@ def build_board(state):
     #Bảng act[i] = (0 up, 1 right, 2 down, 3 left) cho robot i
     b.act = tuple(tuple('%d %s' % (i, n) for n in NAMES)
                   for i in range(len(state.robots)))
-    b.h_cache = {}                  #Cache h2 theo bitmask thùng
+    b.h_cache = {}
     precompute_push_dist(b)
     return b
 
@@ -95,11 +95,6 @@ def precompute_push_dist(board):
 
     for goal in board.goals:
         distances = [INF] * board.N
-        # Một đích có thể ở góc/cụt nên không cần có ô kề để là sàn hợp lệ.
-        if not 0 <= goal < board.N:
-            board.pdc.append(tuple(distances))
-            continue
-
         distances[goal] = 0
         queue = deque([goal])
         while queue:
@@ -141,16 +136,19 @@ def precompute_push_dist(board):
     return board.pdc, board.pd_min, board.dead
 
 
+# ---- Các hàm dưới đây (start_key .. rebuild) thuộc engine "fast": solve() hiện
+# ---- KHÔNG gọi tới, chỉ dùng trong test và thử nghiệm. Xem thêm Khu 4a.
+
 def start_key(state):
     """Chuyển SokobanState sang state nội bộ (robots, boxes)"""
     W = state.width                                                 #Lấy chiều rộng của board
     robots = tuple(y * W + x for (x, y) in state.robots)            #Lấy vị trí ban đầu của robot
-    boxes = 0                                                       
+    boxes = 0
     for (x, y) in state.boxes:
         boxes |= 1 << (y * W + x)                                   #Tìm vị trí thùng và lưu vào boxes bằng cách sử dụng bitmask
         #Kiếm tra ô p có thùng hay k bằng cách (boxes >> p) & 1 (1 nếu có thùng, 0 nếu không)
     return (robots, boxes)                                          #Trả về state nội bộ gồm vị trí robot và bitmask thùng
-#Lưu bit của robot với box thành 1 với nhau làm giảm 1 nửa số bước cần làm
+
 
 def cells(mask):
     """Yield vị trí các bit được bật trong bitmask theo thứ tự tăng dần."""
@@ -160,8 +158,8 @@ def cells(mask):
         lowest_bit = mask & -mask
         yield lowest_bit.bit_length() - 1
         mask ^= lowest_bit
- 
- 
+
+
 def is_goal(b, s):
     """True khi không có thùng nào nằm ngoài ô đích
     Số ô đích có thể nhiều hơn số thùng nên không so sánh bằng.
@@ -170,11 +168,11 @@ def is_goal(b, s):
                                                                     #Nếu tất cả các thùng đều nằm trong các ô đích
                                                                     #thì boxes & ~goal_mask sẽ bằng 0
                                                                     #nghĩa là không có thùng nào nằm ngoài ô đích.
- 
- 
+
+
 def successors_fast(b, s):
     """Sinh các nước đi từ state nội bộ s, không tạo SokobanState.
- 
+
     Trả list (action, s2, pushed): action là tên đúng như framework (vd "0 up"),
     s2 là state nội bộ mới, pushed là ô thùng vừa được đẩy tới (hoặc None).
     Tập (action, s2) phải khớp tuyệt đối với successors() của framework.
@@ -186,7 +184,7 @@ def successors_fast(b, s):
     for i, r in enumerate(robots):              #Duyệt qua từng robot, r là vị trí hiện tại của robot i
         row = nbr[r]                            #Lấy danh sách các ô kề của robot i
         for d in range(4):                      #Thử đi cả 4 hướng
-            t = row[d]                         
+            t = row[d]
             if t < 0 or t in robots:            #Nếu là tường, ngoài bàn, hoặc robot khác thì bỏ qua hướng này
                 continue
             if (boxes >> t) & 1:                #Nếu phía trước có thùng thì thử đẩy
@@ -200,20 +198,13 @@ def successors_fast(b, s):
                 pushed = None
             out.append((act[i][d]               #Lấy tên hành động theo robot i và hướng d
                         , (robots[:i] + (t,) + robots[i + 1:], nb)      #Cập nhật vị trí robot i sang t, giữ nguyên các robot khác
-                        , pushed))            
-    return out                                  #Danh sách chứa các hành động hợp lệ  
- 
-def actions(goal):
-    actions = []
-    while goal.parent is not None:
-        acts.append(goal.action)
-        goal = goal.parent
-    actions.reverse()
-    return actions
+                        , pushed))
+    return out                                  #Danh sách chứa các hành động hợp lệ
+
 
 def rebuild(initial_state, actions):
     """Dựng lại chuỗi SokobanState thật từ danh sách action, bằng successors() của framework.
- 
+
     Mỗi state con do framework tạo nên có đúng parent, action, gval và validation.py
     chấp nhận. initial_state chỉ được đọc, không bị sửa. Chi phí O(L * 4k).
     """
@@ -233,17 +224,6 @@ def rebuild(initial_state, actions):
 def h_zero(state):
     """Heuristic 0 của UCS/A*; O(1)."""
     return 0
-
-
-def h_box_manhattan(state):
-    """Tổng Manhattan tới đích gần nhất cho mỗi hộp; O(BG)."""
-    goals = set(state.storage)
-    if not goals:
-        return 0 if not state.boxes else INF
-    return sum(
-        min(abs(bx - gx) + abs(by - gy) for gx, gy in goals)
-        for bx, by in state.boxes
-    )
 
 
 def h1(state, board=None):
@@ -333,6 +313,41 @@ def _minimum_assignment_cost(costs):
     return -goal_potential[0]
 
 
+def _assignment_cost(costs, goal_count):
+    """Chi phí ghép thùng-đích nhỏ nhất, dùng chung cho h2 và _h2_mask.
+
+    Ít đích (<= 8): DP trên tập đích đã dùng, O(B·2^G·G).
+    Nhiều đích hơn: Hungarian hình chữ nhật, O(B²G).
+    """
+    if goal_count > 8:
+        return _minimum_assignment_cost(costs)
+    assignments = {0: 0}
+    for row in costs:
+        next_assignments = {}
+        for used_goals, cost in assignments.items():
+            for goal, distance in enumerate(row):
+                goal_bit = 1 << goal
+                if used_goals & goal_bit or distance >= INF:
+                    continue
+                next_mask = used_goals | goal_bit
+                candidate = cost + distance
+                if candidate < next_assignments.get(next_mask, INF):
+                    next_assignments[next_mask] = candidate
+        assignments = next_assignments
+        if not assignments:
+            break
+    return min(assignments.values(), default=INF)
+
+
+def _cache_put(board, box_mask, value):
+    """Lưu h theo bitmask thùng; cache đầy thì xóa hết rồi lưu lại từ đầu."""
+    cache_limit = CONFIG["h_cache_max"]
+    if cache_limit > 0:
+        if len(board.h_cache) >= cache_limit:
+            board.h_cache.clear()
+        board.h_cache[box_mask] = value
+
+
 def h2(state, board=None):
     """Ghép hộp với các đích khác nhau; cache theo cấu hình hộp."""
     if board is None:
@@ -358,31 +373,8 @@ def h2(state, board=None):
         tuple(distances[cell] for distances in board.pdc)
         for cell in box_cells
     ]
-    if len(board.goals) <= 8:
-        assignments = {0: 0}
-        for row in costs:
-            next_assignments = {}
-            for used_goals, cost in assignments.items():
-                for goal, distance in enumerate(row):
-                    goal_bit = 1 << goal
-                    if used_goals & goal_bit or distance >= INF:
-                        continue
-                    next_mask = used_goals | goal_bit
-                    candidate = cost + distance
-                    if candidate < next_assignments.get(next_mask, INF):
-                        next_assignments[next_mask] = candidate
-            assignments = next_assignments
-            if not assignments:
-                break
-        result = min(assignments.values(), default=INF)
-    else:
-        result = _minimum_assignment_cost(costs)
-
-    cache_limit = CONFIG["h_cache_max"]
-    if cache_limit > 0:
-        if len(board.h_cache) >= cache_limit:
-            board.h_cache.clear()
-        board.h_cache[box_mask] = result
+    result = _assignment_cost(costs, len(board.goals))
+    _cache_put(board, box_mask, result)
     return result
 
 
@@ -406,7 +398,6 @@ def h3(state, board=None):
 
 HEURISTICS = {
     "h0": h_zero,
-    "manhattan": h_box_manhattan,
     "h1": h1,
     "h2": h2,
     "h3": h3,
@@ -493,25 +484,26 @@ def is_dead(state, board, pushed=None):
     if pushed is None:
         if is_dead_static(state, board):
             return True
+    elif pushed in board.dead:
+        return True
+    if mode == "cells":
+        return False
+
+    if pushed is None:
         candidates = tuple(
             y * board.W + x for x, y in state.boxes)
     else:
-        if pushed in board.dead:
-            return True
-        if mode == "cells":
-            return False
         box_cells = {y * board.W + x for x, y in state.boxes}
         candidates = (pushed,) + tuple(
             neighbor for neighbor in board.nbr[pushed]
             if neighbor >= 0 and neighbor in box_cells
         )
-
-    if mode == "cells":
-        return False
     return has_frozen_box_deadlock(state, board, candidates)
 
 # ==== Khu 4 === (A) Tìm kiếm và quản lý thời gian, bộ nhớ.
 # ---- Khu 4a: biểu diễn khóa số nguyên cho engine "fast" ----
+# CHƯA DÙNG TRONG BÀI NỘP: solve() chạy engine framework (Khu 4b). Phần này giữ
+# lại cho thử nghiệm và cho tests/test_search.py kiểm tương đương với Khu 2, 3.
 # Khóa = bitmask thùng dịch trái R*S bit, ghép với ô của từng robot (mỗi robot S bit).
 # h và deadlock ở đây phải cho đúng cùng giá trị với Khu 2, 3 (tests/test_search.py kiểm).
 
@@ -569,30 +561,8 @@ def _h2_mask(c, boxes):
     costs = [c.rows[p] for p in cells(boxes)]
     if len(costs) > len(b.goals):
         return INF
-    if len(b.goals) <= 8:
-        assignments = {0: 0}
-        for row in costs:
-            next_assignments = {}
-            for used_goals, cost in assignments.items():
-                for goal, distance in enumerate(row):
-                    goal_bit = 1 << goal
-                    if used_goals & goal_bit or distance >= INF:
-                        continue
-                    next_mask = used_goals | goal_bit
-                    candidate = cost + distance
-                    if candidate < next_assignments.get(next_mask, INF):
-                        next_assignments[next_mask] = candidate
-            assignments = next_assignments
-            if not assignments:
-                break
-        result = min(assignments.values(), default=INF)
-    else:
-        result = _minimum_assignment_cost(costs)
-    cache_limit = CONFIG["h_cache_max"]
-    if cache_limit > 0:
-        if len(b.h_cache) >= cache_limit:
-            b.h_cache.clear()
-        b.h_cache[boxes] = result
+    result = _assignment_cost(costs, len(b.goals))
+    _cache_put(b, boxes, result)
     return result
 
 
@@ -657,12 +627,10 @@ def dead_after_push(b, boxes, pushed, mode):
             return True
     return False
 
-def is_dead_none(state):
-    """Deadlock checker mặc định không cắt state nào; O(1)."""
-    return False
 
+# ---- Khu 4b: search trên SokobanState của framework (đang dùng trong solve) ----
 
-def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
+def astar(initial_state, deadline, heuristic, is_dead,
           max_states=None, weight=1.0, bound=INF):
     """A* có trọng số và cận cắt; O(E log E) thời gian, O(E) bộ nhớ.
 
@@ -741,33 +709,6 @@ def astar(initial_state, deadline, heuristic, is_dead=is_dead_none,
     return None, stats
 
 
-def bfs_v0(initial_state, deadline, max_states=None):
-    """BFS dự phòng để so sánh; O(V·R(R+B)) thời gian, O(V(R+B)) bộ nhớ."""
-    if max_states is None:
-        max_states = MAX_STATES
-    if sokoban_goal_state(initial_state):
-        return initial_state
-    queue = deque([initial_state])
-    visited = {initial_state.hashable_state()}
-    expanded_nodes = 0
-    while queue:
-        if (expanded_nodes % CHECK_EVERY) == 0 and time.monotonic() >= deadline:
-            return None
-        if len(visited) > max_states:
-            return None
-        expanded_nodes += 1
-        current = queue.popleft()
-        for child in current.successors():
-            key = child.hashable_state()
-            if key in visited:
-                continue
-            if sokoban_goal_state(child):
-                return child
-            visited.add(key)
-            queue.append(child)
-    return None
-
-
 def anytime_search(initial_state, deadline, heuristic, deadlock,
                    weights=None, max_states=None):
     """Chạy weighted A* với w giảm dần, giữ lời giải tốt nhất; O(k·E log E).
@@ -818,13 +759,16 @@ def anytime_search(initial_state, deadline, heuristic, deadlock,
             break
     return best, phases, proved
 
+
 def solve(initial_state, timebound=120):
     """Tìm và cải thiện lời giải trong giới hạn thời gian, trả về state đích."""
-    #Trả về False ngay nếu hết thời gian mà chưa tìm đc lời giải
+    global LAST_INFO
+    LAST_INFO = {"proved": False, "phases": []}
+    # Đầu vào không hợp lệ hoặc không có thời gian thì trả False ngay
     if initial_state is None or timebound is None or timebound <= 0:
         return False
 
-    #Thiết lập thời gian kết thúc (đang để thời gian chạy là 85% của timebound)
+    # Thời điểm phải dừng search: TIME_FRACTION (85%) của timebound
     deadline = time.monotonic() + timebound * TIME_FRACTION
     board = build_board(initial_state)
     heuristic_name = CONFIG["h"]
@@ -839,8 +783,9 @@ def solve(initial_state, timebound=120):
     if USE_GC_DISABLE:
         gc.disable()
     try:
-        goal, _, _ = anytime_search(
+        goal, phases, proved = anytime_search(
             initial_state, deadline, heuristic, deadlock)
+        LAST_INFO = {"proved": proved, "phases": phases}
     except MemoryError:
         goal = None
     finally:
