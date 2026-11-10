@@ -22,19 +22,27 @@ TIME_FRACTION = 0.85
 # Cứ mỗi CHECK_EVERY lần lấy node khỏi heap thì kiểm tra đồng hồ một lần
 CHECK_EVERY = 500
 # Số state tối đa được lưu trong best_g, tránh tràn bộ nhớ
-MAX_STATES = 2000000
+MAX_STATES = 1000000
 INF = float("inf")
 USE_GC_DISABLE = True
 CONFIG = {
     "h": "h2",               # h0 | h1 | h2 | h3
     "dead": "freeze",        # none | cells | freeze
     "h_cache_max": 100000,
-    "sym": True,             # coi các robot như nhau khi ghép khóa (chỉ engine fast, Khu 4a)
+    "sym": True,             # coi các robot như nhau khi ghép khóa (astar và engine fast)
 }
 # Thông tin lần solve() gần nhất, bench.py đọc: {"proved": bool, "phases": [...]}
 LAST_INFO = {}
 #Dãy trọng số cho anytime: w lớn tìm lời giải nhanh, w = 1 chứng minh tối ưu
 WEIGHTS = (5.0, 3.0, 2.0, 1.5, 1.0)
+# Pha đầu chưa ra lời giải sau tỉ lệ này của ngân sách thì chuyển sang pha cứu hộ
+FIRST_PHASE_FRACTION = 0.5
+# Trọng số pha cứu hộ, chỉ chạy khi pha đầu thất bại mà vẫn còn thời gian
+RESCUE_WEIGHT = 25.0
+# Khi một trọng số thất bại, chia đôi dần về phía trọng số đã thành công tới khi hẹp hơn mức này
+MIN_WEIGHT_GAP = 0.1
+# Số thùng tối đa trên một chuỗi đệ quy kiểm freeze; vượt quá thì coi là chưa đóng băng (vẫn sound)
+FREEZE_DEPTH = 12
 
 # ==== Khu 1 === (B) Xây board, state nội bộ, successors_fast và rebuild.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))     # up, right, down, left
@@ -43,7 +51,7 @@ NAMES = ("up", "right", "down", "left")
 class Board:
     """Bảng tiền xử lý kích thước, láng giềng, đích và action."""
 
-    __slots__=('W', 'H', 'N', 'nbr', 'goals', 'goal_mask', 'act',
+    __slots__=('W', 'H', 'N', 'nbr', 'goals', 'goal_mask', 'goal_set', 'act',
                 'dead', 'pd_min', 'pdc', 'h_cache')
 
 
@@ -70,6 +78,7 @@ def build_board(state):
     #Kiểm tra các ô đích và lưu vào goals, goal_mask
     b.goals = tuple(sorted(y * W + x for (x, y) in state.storage))
     b.goal_mask = sum(1 << g for g in b.goals)
+    b.goal_set = frozenset(b.goals)     # tạo một lần, kiểm freeze dùng lại
     #Bảng act[i] = (0 up, 1 right, 2 down, 3 left) cho robot i
     b.act = tuple(tuple('%d %s' % (i, n) for n in NAMES)
                   for i in range(len(state.robots)))
@@ -434,6 +443,8 @@ def _blocked_axis(board, boxes, cell, horizontal, seen):
 def _is_frozen(board, boxes, cell, seen):
     if cell in seen:
         return True
+    if len(seen) > FREEZE_DEPTH:        # chuỗi quá dài: bỏ cuộc, coi là chưa đóng băng
+        return False
     next_seen = seen | {cell}
     return (
         _blocked_axis(board, boxes, cell, True, next_seen)
@@ -454,7 +465,7 @@ def has_frozen_box_deadlock(state, board, candidates=None):
 
     if candidates is None:
         candidates = tuple(cell_to_box)
-    goals = set(board.goals)
+    goals = board.goal_set
     for cell in candidates:
         if cell not in cell_to_box:
             continue
@@ -631,7 +642,7 @@ def dead_after_push(b, boxes, pushed, mode):
 # ---- Khu 4b: search trên SokobanState của framework (đang dùng trong solve) ----
 
 def astar(initial_state, deadline, heuristic, is_dead,
-          max_states=None, weight=1.0, bound=INF):
+          max_states=None, weight=1.0, bound=INF, box_only_h=False):
     """A* có trọng số và cận cắt; O(E log E) thời gian, O(E) bộ nhớ.
 
     - Heap xếp theo f = g + weight * h. weight = 1 là A* thường (tối ưu khi h
@@ -641,6 +652,11 @@ def astar(initial_state, deadline, heuristic, is_dead,
     - Kiểm đích lúc lấy ra; best_g + bỏ entry cũ (lazy deletion), cho phép mở lại.
     - stats["reason"] == "exhausted" khi có bound nghĩa là: không tồn tại lời giải
       ngắn hơn bound (nếu h admissible và is_dead sound).
+    - CONFIG["sym"]: khóa trong best_g dùng ô robot đã sắp xếp, nên các state chỉ
+      khác nhau ở việc robot nào đứng ô nào được gộp làm một. Node vẫn là
+      SokobanState thật nên chuỗi parent/action trả về vẫn đúng.
+    - box_only_h=True: heuristic chỉ phụ thuộc vị trí thùng (h0, h1, h2), nên nước
+      đi bộ dùng lại h của cha thay vì tính lại.
     """
     if max_states is None:              # đọc lúc gọi để bench ghi đè được
         max_states = MAX_STATES
@@ -659,9 +675,13 @@ def astar(initial_state, deadline, heuristic, is_dead,
         return None, stats
 
     tie = itertools.count()
-    start = initial_state.hashable_state()
+    sym = CONFIG["sym"]
+    if sym:
+        start = (tuple(sorted(initial_state.robots)), initial_state.boxes)
+    else:
+        start = initial_state.hashable_state()
     best_g = {start: 0}
-    heap = [(weight * h0, 0, next(tie), initial_state)]
+    heap = [(weight * h0, 0, next(tie), initial_state, start, h0)]
     push, pop = heapq.heappush, heapq.heappop
     pops = 0
 
@@ -671,9 +691,8 @@ def astar(initial_state, deadline, heuristic, is_dead,
             stats["reason"] = "timeout"
             return None, stats
 
-        _, neg_g, _, state = pop(heap)
+        _, neg_g, _, state, key, state_h = pop(heap)
         g = -neg_g
-        key = state.hashable_state()
         if g > best_g[key]:
             stats["stale"] += 1
             continue
@@ -683,15 +702,22 @@ def astar(initial_state, deadline, heuristic, is_dead,
 
         stats["expanded"] += 1
         child_g = g + 1
+        boxes = state.boxes
         for child in state.successors():
-            child_key = child.hashable_state()
+            if sym:
+                child_key = (tuple(sorted(child.robots)), child.boxes)
+            else:
+                child_key = child.hashable_state()
             old_g = best_g.get(child_key)
             if old_g is not None and child_g >= old_g:
                 continue
             if is_dead(child):
                 stats["pruned_dead"] += 1
                 continue
-            child_h = heuristic(child)
+            if box_only_h and child.boxes == boxes:
+                child_h = state_h               # đi bộ: thùng không đổi nên h không đổi
+            else:
+                child_h = heuristic(child)
             if child_h >= INF:
                 stats["pruned_h"] += 1
                 continue
@@ -699,7 +725,8 @@ def astar(initial_state, deadline, heuristic, is_dead,
                 stats["pruned_bound"] += 1
                 continue
             best_g[child_key] = child_g
-            push(heap, (child_g + weight * child_h, -child_g, next(tie), child))
+            push(heap, (child_g + weight * child_h, -child_g, next(tie), child,
+                        child_key, child_h))
             stats["generated"] += 1
 
         if len(best_g) > max_states:
@@ -710,14 +737,17 @@ def astar(initial_state, deadline, heuristic, is_dead,
 
 
 def anytime_search(initial_state, deadline, heuristic, deadlock,
-                   weights=None, max_states=None):
+                   weights=None, max_states=None, box_only_h=False):
     """Chạy weighted A* với w giảm dần, giữ lời giải tốt nhất; O(k·E log E).
 
     Mỗi pha dùng chi phí tốt nhất hiện có làm bound. Dừng sớm khi:
       - một pha chạy cạn heap (reason "exhausted"): không còn lời giải ngắn hơn,
         lời giải đang giữ (nếu có) là tối ưu;
       - pha w = 1 tìm được đích: đó là lời giải tối ưu;
-      - hết giờ hoặc chạm trần bộ nhớ.
+      - hết giờ, hoặc khoảng chia đôi trọng số đã hẹp hơn MIN_WEIGHT_GAP.
+    Pha đầu chỉ được dùng FIRST_PHASE_FRACTION ngân sách; nếu nó thất bại mà chưa
+    có lời giải thì chạy một pha cứu hộ với RESCUE_WEIGHT. Khi đã có lời giải mà
+    một trọng số nhỏ hơn chạm trần bộ nhớ thì thử trọng số nằm giữa (chia đôi).
     Trả về (state đích tốt nhất hoặc None, danh sách thống kê từng pha, đã chứng
     minh tối ưu hay chưa).
     """
@@ -729,34 +759,53 @@ def anytime_search(initial_state, deadline, heuristic, deadlock,
     bound = INF
     phases = []
     proved = False
-    for weight in weights:
-        if time.monotonic() >= deadline:
-            break
+    now = time.monotonic()
+    first_limit = now + (deadline - now) * FIRST_PHASE_FRACTION
+    queue = list(weights)
+    rescue_used = False
+    ok_weight = fail_weight = None      # trọng số nhỏ nhất đã thành công / lớn nhất đã thất bại
+    while queue and time.monotonic() < deadline:
+        weight = queue.pop(0)
+        # Chỉ giới hạn riêng pha đầu, khi còn pha cứu hộ để chuyển sang
+        limit = deadline if phases else first_limit
         try:
-            goal, stats = astar(initial_state, deadline, heuristic, deadlock,
-                                max_states=max_states, weight=weight, bound=bound)
+            goal, stats = astar(initial_state, limit, heuristic, deadlock,
+                                max_states=max_states, weight=weight, bound=bound,
+                                box_only_h=box_only_h)
         except MemoryError:
-            # Hết RAM giữa chừng: giữ lời giải của các pha trước.
-            break
+            # Hết RAM giữa chừng: coi như chạm trần bộ nhớ.
+            goal, stats = None, {"reason": "memory_cap"}
         stats["weight"] = weight
         stats["cost"] = goal.gval if goal is not None else None
         phases.append(stats)
         if goal is not None:
             best = goal
             bound = goal.gval
+            ok_weight = weight
             if weight <= 1.0:
                 proved = True
                 break
-        elif stats["reason"] == "exhausted":
+        elif stats["reason"] in ("exhausted", "deadlock_at_start", "h_inf_at_start"):
             # Không còn lời giải ngắn hơn bound: best (nếu có) là tối ưu,
             # không có best nghĩa là map không có lời giải.
             proved = True
             break
-        elif stats["reason"] in ("timeout", "memory_cap"):
-            break
-        elif stats["reason"] in ("deadlock_at_start", "h_inf_at_start"):
-            proved = True
-            break
+        elif best is None:
+            if rescue_used:
+                break                           # cả pha cứu hộ cũng thất bại
+            rescue_used = True
+            fail_weight = weight
+            queue = [RESCUE_WEIGHT]             # pha đầu thất bại: thử trọng số lớn
+            continue
+        else:
+            fail_weight = weight                # quá nặng với trần bộ nhớ / thời gian
+        if fail_weight is not None:
+            # Trọng số fail_weight không chạy nổi: chia đôi khoảng giữa nó và
+            # trọng số nhỏ nhất đã thành công để tận dụng thời gian còn lại.
+            if ok_weight - fail_weight > MIN_WEIGHT_GAP:
+                queue = [(ok_weight + fail_weight) / 2.0]
+            else:
+                break
     return best, phases, proved
 
 
@@ -784,7 +833,8 @@ def solve(initial_state, timebound=120):
         gc.disable()
     try:
         goal, phases, proved = anytime_search(
-            initial_state, deadline, heuristic, deadlock)
+            initial_state, deadline, heuristic, deadlock,
+            box_only_h=heuristic_name != "h3")
         LAST_INFO = {"proved": proved, "phases": phases}
     except MemoryError:
         goal = None
