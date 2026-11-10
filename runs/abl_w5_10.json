@@ -1,0 +1,442 @@
+[
+ {
+  "map": 0,
+  "solved": true,
+  "steps": 18,
+  "time": 0.0,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 93,
+    "generated": 194,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 0,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 18
+   }
+  ]
+ },
+ {
+  "map": 1,
+  "solved": true,
+  "steps": 4,
+  "time": 0.0,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 14,
+    "generated": 44,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 0,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 4
+   }
+  ]
+ },
+ {
+  "map": 2,
+  "solved": true,
+  "steps": 25,
+  "time": 0.0,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 50,
+    "generated": 73,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 1,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 25
+   }
+  ]
+ },
+ {
+  "map": 3,
+  "solved": true,
+  "steps": 12,
+  "time": 0.02,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 359,
+    "generated": 758,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 142,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 12
+   }
+  ]
+ },
+ {
+  "map": 4,
+  "solved": true,
+  "steps": 9,
+  "time": 0.01,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 111,
+    "generated": 266,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 36,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 9
+   }
+  ]
+ },
+ {
+  "map": 5,
+  "solved": true,
+  "steps": 30,
+  "time": 0.01,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 196,
+    "generated": 344,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 21,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 30
+   }
+  ]
+ },
+ {
+  "map": 6,
+  "solved": true,
+  "steps": 20,
+  "time": 0.01,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 112,
+    "generated": 211,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 11,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 20
+   }
+  ]
+ },
+ {
+  "map": 7,
+  "solved": true,
+  "steps": 41,
+  "time": 0.0,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 88,
+    "generated": 115,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 11,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 41
+   }
+  ]
+ },
+ {
+  "map": 8,
+  "solved": true,
+  "steps": 14,
+  "time": 0.01,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 85,
+    "generated": 365,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 2,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 14
+   }
+  ]
+ },
+ {
+  "map": 9,
+  "solved": true,
+  "steps": 24,
+  "time": 0.02,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 137,
+    "generated": 731,
+    "stale": 0,
+    "pruned_h": 30,
+    "pruned_dead": 21,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 24
+   }
+  ]
+ },
+ {
+  "map": 10,
+  "solved": true,
+  "steps": 35,
+  "time": 0.03,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 412,
+    "generated": 1287,
+    "stale": 0,
+    "pruned_h": 2,
+    "pruned_dead": 15,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 35
+   }
+  ]
+ },
+ {
+  "map": 11,
+  "solved": true,
+  "steps": 30,
+  "time": 0.02,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 301,
+    "generated": 992,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 8,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 30
+   }
+  ]
+ },
+ {
+  "map": 12,
+  "solved": true,
+  "steps": 30,
+  "time": 0.05,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 670,
+    "generated": 1852,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 18,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 30
+   }
+  ]
+ },
+ {
+  "map": 13,
+  "solved": true,
+  "steps": 31,
+  "time": 0.01,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 181,
+    "generated": 472,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 6,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 31
+   }
+  ]
+ },
+ {
+  "map": 14,
+  "solved": true,
+  "steps": 31,
+  "time": 0.02,
+  "rss_mb": 11,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 362,
+    "generated": 745,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 12,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 31
+   }
+  ]
+ },
+ {
+  "map": 15,
+  "solved": true,
+  "steps": 72,
+  "time": 0.95,
+  "rss_mb": 39,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 13575,
+    "generated": 29178,
+    "stale": 164,
+    "pruned_h": 0,
+    "pruned_dead": 65,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 72
+   }
+  ]
+ },
+ {
+  "map": 16,
+  "solved": true,
+  "steps": 56,
+  "time": 0.58,
+  "rss_mb": 24,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 8238,
+    "generated": 18516,
+    "stale": 24,
+    "pruned_h": 0,
+    "pruned_dead": 70,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 56
+   }
+  ]
+ },
+ {
+  "map": 17,
+  "solved": true,
+  "steps": 102,
+  "time": 1.61,
+  "rss_mb": 51,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 23259,
+    "generated": 41117,
+    "stale": 23,
+    "pruned_h": 12,
+    "pruned_dead": 268,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 102
+   }
+  ]
+ },
+ {
+  "map": 18,
+  "solved": true,
+  "steps": 94,
+  "time": 1.36,
+  "rss_mb": 50,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 21178,
+    "generated": 40026,
+    "stale": 92,
+    "pruned_h": 13,
+    "pruned_dead": 258,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 94
+   }
+  ]
+ },
+ {
+  "map": 19,
+  "solved": true,
+  "steps": 82,
+  "time": 0.19,
+  "rss_mb": 18,
+  "msg": "Valid solution",
+  "proved": false,
+  "phases": [
+   {
+    "expanded": 3169,
+    "generated": 8124,
+    "stale": 0,
+    "pruned_h": 0,
+    "pruned_dead": 94,
+    "pruned_bound": 0,
+    "reason": "goal",
+    "weight": 5.0,
+    "cost": 82
+   }
+  ]
+ }
+]
