@@ -6,6 +6,12 @@ Không bắt buộc một thuật toán, heuristic hay cấu trúc dữ liệu c
 **Nhóm:** Phạm Anh Trọng (25023416), Lê Đức Huy Anh (25023149), Trịnh Đức Dũng (25023196), Đỗ Quốc Long (25023307).
 **Bài nộp:** `solution.py`, hàm `solve(initial_state, timebound=120)`.
 
+**Tóm tắt.** Solver dùng Weighted A\* dạng anytime với heuristic ghép cặp thùng–đích theo khoảng cách đẩy và cắt deadlock (ô chết, freeze). Trên 10 map đã đo với `timebound = 120`:
+
+- Cả 10 map đều có lời giải hợp lệ. Lần chạy lâu nhất là 103,5 s.
+- 5 map nhỏ được chứng minh tối ưu, mỗi map dưới 0,2 s.
+- Trên 5 map 8×8 có 3 robot, solver luôn có lời giải từ pha đầu rồi rút ngắn dần (ví dụ map 19 từ 82 xuống 73 bước), nhưng chưa chứng minh được tối ưu.
+
 ## 1. Thiết kế
 
 ### 1.1 Phương pháp
@@ -152,8 +158,6 @@ Nhóm ưu tiên **#1**: bằng chứng rõ (thời gian còn thừa vì chạm t
 - Phần còn lại của `solution.py` do nhóm tự viết. Chỉ dùng thư viện chuẩn Python (`heapq`, `collections`, `itertools`, `time`, `gc`).
 
 ### 4.4 Công cụ AI đã sử dụng
-
-> Nhóm kiểm tra lại và sửa mục này cho đúng thực tế trước khi nộp.
 
 - GitHub Copilot (VS Code): hỗ trợ chỉnh sửa mã, test và tài liệu phần heuristic, deadlock.
 - Claude (Anthropic): review code, đề xuất tối ưu, hỗ trợ đo đạc và soạn tài liệu (README, báo cáo).
