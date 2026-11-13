@@ -2,7 +2,7 @@
 
 Tổ chức file theo 6 Khu, mỗi Khu có một người phụ trách:
   Khu 0 (A): import, hằng số, cờ cấu hình CONFIG.
-  Khu 1 (B): Board, state nội bộ (robots, bitmask thùng), successors_fast, rebuild.
+  Khu 1 (B): Board, push-distance (successors_fast, rebuild: xem fast_engine.py).
   Khu 2 (C): heuristic admissible h0-h3 dựa trên khoảng cách đẩy.
   Khu 3 (D, C làm): phát hiện deadlock sound (ô chết, freeze).
   Khu 4 (A): tìm kiếm A* có trọng số, anytime, quản lý thời gian và bộ nhớ.
@@ -44,7 +44,7 @@ MIN_WEIGHT_GAP = 0.1
 # Số thùng tối đa trên một chuỗi đệ quy kiểm freeze; vượt quá thì coi là chưa đóng băng (vẫn sound)
 FREEZE_DEPTH = 12
 
-# ==== Khu 1 === (B) Xây board, state nội bộ, successors_fast và rebuild.
+# ==== Khu 1 === (B) Xây board và bảng push-distance.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))     # up, right, down, left
 NAMES = ("up", "right", "down", "left")
 
@@ -143,91 +143,6 @@ def precompute_push_dist(board):
         cell for cell, distance in enumerate(board.pd_min) if distance == INF
     )
     return board.pdc, board.pd_min, board.dead
-
-
-# ---- Các hàm dưới đây (start_key .. rebuild) thuộc engine "fast": solve() hiện
-# ---- KHÔNG gọi tới, chỉ dùng trong test và thử nghiệm. Xem thêm Khu 4a.
-
-def start_key(state):
-    """Chuyển SokobanState sang state nội bộ (robots, boxes)"""
-    W = state.width                                                 #Lấy chiều rộng của board
-    robots = tuple(y * W + x for (x, y) in state.robots)            #Lấy vị trí ban đầu của robot
-    boxes = 0
-    for (x, y) in state.boxes:
-        boxes |= 1 << (y * W + x)                                   #Tìm vị trí thùng và lưu vào boxes bằng cách sử dụng bitmask
-        #Kiếm tra ô p có thùng hay k bằng cách (boxes >> p) & 1 (1 nếu có thùng, 0 nếu không)
-    return (robots, boxes)                                          #Trả về state nội bộ gồm vị trí robot và bitmask thùng
-
-
-def cells(mask):
-    """Yield vị trí các bit được bật trong bitmask theo thứ tự tăng dần."""
-    if mask < 0:
-        raise ValueError("mask must be non-negative")
-    while mask:
-        lowest_bit = mask & -mask
-        yield lowest_bit.bit_length() - 1
-        mask ^= lowest_bit
-
-
-def is_goal(b, s):
-    """True khi không có thùng nào nằm ngoài ô đích
-    Số ô đích có thể nhiều hơn số thùng nên không so sánh bằng.
-    """
-    return (s[1] & ~b.goal_mask) == 0                               #s[1] là boxes, b.goal_mask là bitmask của các ô đích
-                                                                    #Nếu tất cả các thùng đều nằm trong các ô đích
-                                                                    #thì boxes & ~goal_mask sẽ bằng 0
-                                                                    #nghĩa là không có thùng nào nằm ngoài ô đích.
-
-
-def successors_fast(b, s):
-    """Sinh các nước đi từ state nội bộ s, không tạo SokobanState.
-
-    Trả list (action, s2, pushed): action là tên đúng như framework (vd "0 up"),
-    s2 là state nội bộ mới, pushed là ô thùng vừa được đẩy tới (hoặc None).
-    Tập (action, s2) phải khớp tuyệt đối với successors() của framework.
-    """
-    robots, boxes = s
-    nbr = b.nbr
-    act = b.act
-    out = []
-    for i, r in enumerate(robots):              #Duyệt qua từng robot, r là vị trí hiện tại của robot i
-        row = nbr[r]                            #Lấy danh sách các ô kề của robot i
-        for d in range(4):                      #Thử đi cả 4 hướng
-            t = row[d]
-            if t < 0 or t in robots:            #Nếu là tường, ngoài bàn, hoặc robot khác thì bỏ qua hướng này
-                continue
-            if (boxes >> t) & 1:                #Nếu phía trước có thùng thì thử đẩy
-                u = nbr[t][d]                   #Ô phía sau thùng
-                if u < 0 or (boxes >> u) & 1 or u in robots:            #Kiểm tra ô phía sau thùng có trống không
-                    continue                    #Không đẩy được thì bỏ qua hướng này
-                nb = boxes ^ (1 << t) ^ (1 << u)    #Cập nhật vị trí thùng: rời t, đến u
-                pushed = u                      #Lưu lại ô thùng vừa được đẩy tới
-            else:                               #Nếu phía trước không có thùng thì chỉ đi bộ
-                nb = boxes
-                pushed = None
-            out.append((act[i][d]               #Lấy tên hành động theo robot i và hướng d
-                        , (robots[:i] + (t,) + robots[i + 1:], nb)      #Cập nhật vị trí robot i sang t, giữ nguyên các robot khác
-                        , pushed))
-    return out                                  #Danh sách chứa các hành động hợp lệ
-
-
-def rebuild(initial_state, actions):
-    """Dựng lại chuỗi SokobanState thật từ danh sách action, bằng successors() của framework.
-
-    Mỗi state con do framework tạo nên có đúng parent, action, gval và validation.py
-    chấp nhận. initial_state chỉ được đọc, không bị sửa. Chi phí O(L * 4k).
-    """
-    cur = initial_state                         #Bắt đầu từ trạng thái ban đầu của Sokoban
-    for a in actions:                           #Duyệt lần lượt từng hành động trong lời giải
-        for c in cur.successors():              #Lấy danh sách các trạng thái kế tiếp có thể đi đến từ trạng thái hiện tại
-            if c.action == a:                   #Tìm trạng thái có hành động trùng với hành động cần thực hiện
-                cur = c
-                break                           #Đã tìm được trạng thái phù hợp, thoát khỏi vòng lặp bên trong
-        else:
-            #Nếu duyệt hết successors() mà không tìm thấy hành động hợp lệ,
-            #nghĩa là hành động trong danh sách actions không thể thực hiện
-            raise RuntimeError('action khong hop le: ' + a)
-    return cur                                  #Trả về trạng thái cuối cùng sau khi thực hiện tất cả hành động
 
 
 def h_zero(state):
@@ -512,133 +427,6 @@ def is_dead(state, board, pushed=None):
     return has_frozen_box_deadlock(state, board, candidates)
 
 # ==== Khu 4 === (A) Tìm kiếm và quản lý thời gian, bộ nhớ.
-# ---- Khu 4a: biểu diễn khóa số nguyên cho engine "fast" ----
-# CHƯA DÙNG TRONG BÀI NỘP: solve() chạy engine framework (Khu 4b). Phần này giữ
-# lại cho thử nghiệm và cho tests/test_search.py kiểm tương đương với Khu 2, 3.
-# Khóa = bitmask thùng dịch trái R*S bit, ghép với ô của từng robot (mỗi robot S bit).
-# h và deadlock ở đây phải cho đúng cùng giá trị với Khu 2, 3 (tests/test_search.py kiểm).
-
-class FastCtx:
-    """Bảng tính một lần cho mỗi map, dùng cho search trên khóa số nguyên."""
-
-    __slots__ = ('b', 'R', 'S', 'RMASK', 'rows', 'xy')
-
-
-def make_ctx(board, n_robots):
-    """Tạo FastCtx từ Board đã tiền xử lý; O(N·G).
-
-    S = số bit đủ chứa chỉ số ô lớn nhất; rows[p] = chi phí đẩy từ ô p tới
-    từng đích (cột của board.pdc); xy[p] = tọa độ (x, y) của ô p.
-    """
-    c = FastCtx()
-    c.b = board
-    c.R = n_robots
-    c.S = max(1, board.N.bit_length())
-    c.RMASK = (1 << c.S) - 1
-    c.rows = tuple(tuple(d[p] for d in board.pdc) for p in range(board.N))
-    c.xy = tuple((p % board.W, p // board.W) for p in range(board.N))
-    return c
-
-
-def pack(c, robots, boxes):
-    """Ghép (ô robot, bitmask thùng) thành một số nguyên; O(R log R).
-
-    Khi CONFIG["sym"] bật, ô robot được sắp xếp trước khi ghép, nên hai state
-    chỉ khác nhau ở chỗ robot nào đứng ô nào cho ra cùng một khóa.
-    """
-    key = boxes
-    for r in (sorted(robots) if CONFIG["sym"] else robots):
-        key = (key << c.S) | r
-    return key
-
-
-def unpack(c, key):
-    """Tách khóa thành (list ô robot, bitmask thùng); O(R)."""
-    robots = [0] * c.R
-    for i in range(c.R - 1, -1, -1):
-        robots[i] = key & c.RMASK
-        key >>= c.S
-    return robots, key
-
-
-def _h2_mask(c, boxes):
-    """h2 tính từ bitmask thùng, dùng chung cache board.h_cache với h2 của C."""
-    b = c.b
-    if not boxes:
-        return 0
-    cached = b.h_cache.get(boxes)       # tra cache trước khi dựng ma trận, giống h2 của C
-    if cached is not None:
-        return cached
-    costs = [c.rows[p] for p in cells(boxes)]
-    if len(costs) > len(b.goals):
-        return INF
-    result = _assignment_cost(costs, len(b.goals))
-    _cache_put(b, boxes, result)
-    return result
-
-
-def fast_h(c, name):
-    """Trả về hàm h(robots, boxes) cho engine fast, cùng giá trị với Khu 2.
-
-    Hỗ trợ "h0", "h1", "h2", "h3". h3 lấy Manhattan nhỏ nhất giữa robot và
-    MỌI thùng, kể cả thùng đã trên đích (giữ admissible, xem tài liệu nguyên lý).
-    """
-    pd_min, xy = c.b.pd_min, c.xy
-    if name == "h0":
-        return lambda robots, boxes: 0
-    if name == "h1":
-        def h1_fast(robots, boxes):
-            total = 0
-            for p in cells(boxes):
-                d = pd_min[p]
-                if d == INF:
-                    return INF
-                total += d
-            return total
-        return h1_fast
-    if name == "h2":
-        return lambda robots, boxes: _h2_mask(c, boxes)
-    if name == "h3":
-        def h3_fast(robots, boxes):
-            push_bound = _h2_mask(c, boxes)
-            if push_bound == INF or push_bound == 0:
-                return push_bound
-            if not robots:
-                return INF
-            box_xy = [xy[p] for p in cells(boxes)]
-            best = INF
-            for r in robots:
-                rx, ry = xy[r]
-                for bx, by in box_xy:
-                    d = abs(rx - bx) + abs(ry - by)
-                    if d < best:
-                        best = d
-            return push_bound + max(0, best - 1)
-        return h3_fast
-    raise ValueError("engine fast chỉ hỗ trợ h0, h1, h2, h3")
-
-
-def dead_after_push(b, boxes, pushed, mode):
-    """Deadlock sau khi một thùng vừa được đẩy tới ô pushed; cùng kết quả với is_dead.
-
-    boxes là bitmask thùng SAU khi đẩy. mode: "none" | "cells" | "freeze".
-    Chỉ xét thùng vừa đẩy và các thùng kề nó; thùng đóng băng trên đích không tính.
-    """
-    if mode == "none":
-        return False
-    if pushed in b.dead:
-        return True
-    if mode == "cells":
-        return False
-    goal_mask = b.goal_mask
-    candidates = (pushed,) + tuple(
-        n for n in b.nbr[pushed] if n >= 0 and (boxes >> n) & 1)
-    for cell in candidates:
-        if not (goal_mask >> cell) & 1 and _is_frozen(b, boxes, cell, frozenset()):
-            return True
-    return False
-
-
 # ---- Khu 4b: search trên SokobanState của framework (đang dùng trong solve) ----
 
 def astar(initial_state, deadline, heuristic, is_dead,
